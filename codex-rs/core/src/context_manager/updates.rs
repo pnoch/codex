@@ -257,7 +257,7 @@ mod tests {
     use super::*;
     use crate::model_visible_context::ContextualUserContextRole;
     use crate::model_visible_context::DeveloperContextRole;
-    use crate::model_visible_context::ModelVisibleContextEnvelope;
+    use crate::model_visible_context::ModelVisibleContextFragmentSpec;
     use codex_protocol::models::ContentItem;
     use pretty_assertions::assert_eq;
 
@@ -294,8 +294,8 @@ mod tests {
     impl ModelVisibleContextFragment for FakeFragment {
         type Role = ContextualUserContextRole;
 
-        fn spec(&self) -> ModelVisibleContextEnvelope {
-            ModelVisibleContextEnvelope::contextual_user("<fake>", "</fake>")
+        fn spec(&self) -> ModelVisibleContextFragmentSpec {
+            ModelVisibleContextFragmentSpec::contextual_user("<fake>", "</fake>")
         }
 
         fn render_text(&self) -> String {
@@ -311,8 +311,8 @@ mod tests {
     impl ModelVisibleContextFragment for FakeDeveloperFragment {
         type Role = DeveloperContextRole;
 
-        fn spec(&self) -> ModelVisibleContextEnvelope {
-            ModelVisibleContextEnvelope::markerless()
+        fn spec(&self) -> ModelVisibleContextFragmentSpec {
+            ModelVisibleContextFragmentSpec::markerless()
         }
 
         fn render_text(&self) -> String {
