@@ -1,13 +1,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterator
+from typing import Iterator
 
 from .client import AppServerClient, AppServerConfig
+from .generated.v2_all.ThreadForkParams import (
+    AskForApproval as ForkAskForApproval,
+)
+from .generated.v2_all.ThreadForkParams import SandboxMode as ForkSandboxMode
 from .generated.v2_all.ThreadForkParams import ThreadForkParams
 from .generated.v2_all.ThreadListParams import ThreadListParams
+from .generated.v2_all.ThreadListParams import ThreadSortKey, ThreadSourceKind
+from .generated.v2_all.ThreadResumeParams import (
+    AskForApproval as ResumeAskForApproval,
+)
+from .generated.v2_all.ThreadResumeParams import Personality as ResumePersonality
+from .generated.v2_all.ThreadResumeParams import SandboxMode as ResumeSandboxMode
 from .generated.v2_all.ThreadResumeParams import ThreadResumeParams
-from .generated.v2_all.ThreadStartParams import ThreadStartParams
+from .generated.v2_all.ThreadStartParams import AskForApproval, Personality, SandboxMode, ThreadStartParams
 from .generated.v2_all.TurnSteerParams import TurnSteerParams
 from .generated.v2_types import (
     ModelListResponse,
@@ -19,15 +29,26 @@ from .generated.v2_types import (
     TurnCompletedNotificationPayload,
     TurnSteerResponse,
 )
-from .models import Notification
+from .generated.v2_all.TurnCompletedNotification import TurnStatus
+from .models import JsonObject, Notification
+
+
+def _event_params_dict(params: object | None) -> JsonObject:
+    if params is None:
+        return {}
+    if isinstance(params, dict):
+        return params
+    if hasattr(params, "model_dump"):
+        return params.model_dump(exclude_none=True)
+    return {}
 
 
 @dataclass(slots=True)
 class TurnResult:
     thread_id: str
     turn_id: str
-    status: str
-    error: Any | None
+    status: TurnStatus | str
+    error: object | None
     text: str
     items: list[ThreadItem]
     usage: ThreadTokenUsageUpdatedNotification | None = None
@@ -70,7 +91,7 @@ class InitializeResult:
     server_version: str | None = None
 
 
-def _to_wire_item(item: InputItem) -> dict[str, Any]:
+def _to_wire_item(item: InputItem) -> JsonObject:
     if isinstance(item, TextInput):
         return {"type": "text", "text": item.text}
     if isinstance(item, ImageInput):
@@ -84,7 +105,7 @@ def _to_wire_item(item: InputItem) -> dict[str, Any]:
     raise TypeError(f"unsupported input item: {type(item)!r}")
 
 
-def _to_wire_input(input: Input) -> list[dict[str, Any]]:
+def _to_wire_input(input: Input) -> list[JsonObject]:
     if isinstance(input, list):
         return [_to_wire_item(i) for i in input]
     return [_to_wire_item(input)]
@@ -109,7 +130,7 @@ class Codex:
         self.close()
 
     @staticmethod
-    def _parse_initialize(payload: dict[str, Any]) -> InitializeResult:
+    def _parse_initialize(payload: JsonObject) -> InitializeResult:
         if not isinstance(payload, dict):
             raise TypeError("initialize response must be a dict")
         server = payload.get("serverInfo")
@@ -134,16 +155,16 @@ class Codex:
     def thread_start(
         self,
         *,
-        approval_policy: str | None = None,
+        approval_policy: AskForApproval | None = None,
         base_instructions: str | None = None,
-        config: dict[str, Any] | None = None,
+        config: JsonObject | None = None,
         cwd: str | None = None,
         developer_instructions: str | None = None,
         ephemeral: bool | None = None,
         model: str | None = None,
         model_provider: str | None = None,
-        personality: Any | None = None,
-        sandbox: Any | None = None,
+        personality: Personality | None = None,
+        sandbox: SandboxMode | None = None,
     ) -> Thread:
         params = ThreadStartParams.model_validate(
             {
@@ -159,7 +180,7 @@ class Codex:
                 "sandbox": sandbox,
             }
         ).model_dump(exclude_none=True, mode="json")
-        started = self._client.thread_start(**params)
+        started = self._client.thread_start(params)
         return Thread(self._client, started["thread"]["id"])
 
     def thread(self, thread_id: str) -> Thread:
@@ -169,15 +190,15 @@ class Codex:
         self,
         thread_id: str,
         *,
-        approval_policy: str | None = None,
+        approval_policy: ResumeAskForApproval | None = None,
         base_instructions: str | None = None,
-        config: dict[str, Any] | None = None,
+        config: JsonObject | None = None,
         cwd: str | None = None,
         developer_instructions: str | None = None,
         model: str | None = None,
         model_provider: str | None = None,
-        personality: Any | None = None,
-        sandbox: Any | None = None,
+        personality: ResumePersonality | None = None,
+        sandbox: ResumeSandboxMode | None = None,
     ) -> Thread:
         params = ThreadResumeParams.model_validate(
             {
@@ -207,8 +228,8 @@ class Codex:
         cwd: str | None = None,
         limit: int | None = None,
         model_providers: list[str] | None = None,
-        sort_key: str | None = None,
-        source_kinds: list[str] | None = None,
+        sort_key: ThreadSortKey | None = None,
+        source_kinds: list[ThreadSourceKind] | None = None,
     ) -> ThreadListResponse:
         params = ThreadListParams.model_validate(
             {
@@ -221,7 +242,7 @@ class Codex:
                 "sourceKinds": source_kinds,
             }
         ).model_dump(exclude_none=True, mode="json")
-        result = self._client.thread_list(**params)
+        result = self._client.thread_list(params)
         if not isinstance(result, dict):
             raise TypeError("thread/list response must be a dict")
         return ThreadListResponse.model_validate(result)
@@ -238,14 +259,14 @@ class Codex:
         self,
         thread_id: str,
         *,
-        approval_policy: str | None = None,
+        approval_policy: ForkAskForApproval | None = None,
         base_instructions: str | None = None,
-        config: dict[str, Any] | None = None,
+        config: JsonObject | None = None,
         cwd: str | None = None,
         developer_instructions: str | None = None,
         model: str | None = None,
         model_provider: str | None = None,
-        sandbox: Any | None = None,
+        sandbox: ForkSandboxMode | None = None,
     ) -> Thread:
         params = ThreadForkParams.model_validate(
             {
@@ -333,39 +354,38 @@ class Turn:
             yield event
             if (
                 event.method == "turn/completed"
-                and (event.params or {}).get("turn", {}).get("id") == self.id
+                and _event_params_dict(event.params).get("turn", {}).get("id") == self.id
             ):
                 break
 
     def run(self) -> TurnResult:
         """Consume turn events and return typed `TurnResult` (completed + usage + text)."""
-        completed_payload: dict[str, Any] | None = None
+        completed_payload: JsonObject | None = None
         usage: ThreadTokenUsageUpdatedNotification | None = None
         chunks: list[str] = []
 
         for event in self.stream():
             if event.method == "item/agentMessage/delta":
-                chunks.append((event.params or {}).get("delta", ""))
+                chunks.append(_event_params_dict(event.params).get("delta", ""))
             elif event.method == "thread/tokenUsageUpdated":
-                params = event.params or {}
+                params = _event_params_dict(event.params)
                 if params.get("turnId") == self.id:
                     usage = ThreadTokenUsageUpdatedNotification.model_validate(params)
             elif (
                 event.method == "turn/completed"
-                and (event.params or {}).get("turn", {}).get("id") == self.id
+                and _event_params_dict(event.params).get("turn", {}).get("id") == self.id
             ):
-                completed_payload = event.params or {}
+                completed_payload = _event_params_dict(event.params)
 
         if completed_payload is None:
             raise RuntimeError("turn completed event not received")
 
         completed = TurnCompletedNotificationPayload.model_validate(completed_payload)
         status = completed.turn.status
-        status_str = status.value if hasattr(status, "value") else str(status)
         return TurnResult(
             thread_id=completed.threadId,
             turn_id=completed.turn.id,
-            status=status_str,
+            status=status,
             error=completed.turn.error,
             text="".join(chunks),
             items=list(completed.turn.items or []),

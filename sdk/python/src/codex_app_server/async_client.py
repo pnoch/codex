@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Iterable
+from typing import Iterable
 
 from .client import AppServerClient, AppServerConfig
 from .conversation import AsyncThreadSession
@@ -52,7 +52,12 @@ from .generated.schema_types import (
 )
 from .generated.schema_types import TurnStartResponse as SchemaTurnStartResponse
 from .generated.schema_types import TurnSteerResponse as SchemaTurnSteerResponse
-from .models import AskResult, Notification
+from .generated.v2_all.ThreadForkParams import ThreadForkParams as V2ThreadForkParams
+from .generated.v2_all.ThreadListParams import ThreadListParams as V2ThreadListParams
+from .generated.v2_all.ThreadResumeParams import ThreadResumeParams as V2ThreadResumeParams
+from .generated.v2_all.ThreadStartParams import ThreadStartParams as V2ThreadStartParams
+from .generated.v2_all.TurnStartParams import TurnStartParams as V2TurnStartParams
+from .models import AskResult, JsonObject, Notification
 from .typed import (
     AgentMessageDeltaEvent,
     EmptyResult,
@@ -75,11 +80,7 @@ from .typed import (
 
 
 class AsyncAppServerClient:
-    """Async wrapper around AppServerClient using thread offloading.
-
-    This keeps the public API notebook/async friendly while preserving a single
-    battle-tested sync transport implementation.
-    """
+    """Async wrapper around AppServerClient using thread offloading."""
 
     def __init__(self, config: AppServerConfig | None = None):
         self._sync = AppServerClient(config=config)
@@ -100,88 +101,86 @@ class AsyncAppServerClient:
     async def close(self) -> None:
         await self._call_sync(self._sync.close)
 
-    async def initialize(self) -> dict[str, Any]:
+    async def initialize(self) -> JsonObject:
         return await self._call_sync(self._sync.initialize)
 
-    async def thread_start(self, **params: Any) -> ThreadStartResponse:
-        return await self._call_sync(self._sync.thread_start, **params)
+    async def thread_start(self, params: V2ThreadStartParams | JsonObject | None = None, **legacy_params: object) -> ThreadStartResponse:
+        return await self._call_sync(self._sync.thread_start, params, **legacy_params)
 
     async def thread_resume(
-        self, thread_id: str, **params: Any
+        self, thread_id: str, params: V2ThreadResumeParams | JsonObject | None = None, **legacy_params: object
     ) -> ThreadResumeResponse:
-        return await self._call_sync(self._sync.thread_resume, thread_id, **params)
+        return await self._call_sync(self._sync.thread_resume, thread_id, params, **legacy_params)
 
-    async def thread_list(self, **params: Any) -> ThreadListResponse:
-        return await self._call_sync(self._sync.thread_list, **params)
+    async def thread_list(self, params: V2ThreadListParams | JsonObject | None = None, **legacy_params: object) -> ThreadListResponse:
+        return await self._call_sync(self._sync.thread_list, params, **legacy_params)
 
     async def thread_read(
         self, thread_id: str, include_turns: bool = False
     ) -> ThreadReadResponse:
         return await self._call_sync(self._sync.thread_read, thread_id, include_turns)
 
-    async def thread_fork(self, thread_id: str, **params: Any) -> dict[str, Any]:
-        return await self._call_sync(self._sync.thread_fork, thread_id, **params)
+    async def thread_fork(self, thread_id: str, params: V2ThreadForkParams | JsonObject | None = None) -> JsonObject:
+        return await self._call_sync(self._sync.thread_fork, thread_id, params)
 
-    async def thread_archive(self, thread_id: str) -> dict[str, Any]:
+    async def thread_archive(self, thread_id: str) -> JsonObject:
         return await self._call_sync(self._sync.thread_archive, thread_id)
 
-    async def thread_unarchive(self, thread_id: str) -> dict[str, Any]:
+    async def thread_unarchive(self, thread_id: str) -> JsonObject:
         return await self._call_sync(self._sync.thread_unarchive, thread_id)
 
-    async def thread_set_name(self, thread_id: str, name: str) -> dict[str, Any]:
+    async def thread_set_name(self, thread_id: str, name: str) -> JsonObject:
         return await self._call_sync(self._sync.thread_set_name, thread_id, name)
 
     async def turn_start(
         self,
         thread_id: str,
-        input_items: list[dict[str, Any]] | dict[str, Any] | str,
-        **params: Any,
+        input_items: list[JsonObject] | JsonObject | str,
+        params: V2TurnStartParams | JsonObject | None = None,
+        **legacy_params: object,
     ) -> TurnStartResponse:
         return await self._call_sync(
-            self._sync.turn_start, thread_id, input_items, **params
+            self._sync.turn_start, thread_id, input_items, params, **legacy_params
         )
 
     async def turn_text(
-        self, thread_id: str, text: str, **params: Any
+        self, thread_id: str, text: str, params: V2TurnStartParams | JsonObject | None = None, **legacy_params: object
     ) -> TurnStartResponse:
-        return await self._call_sync(self._sync.turn_text, thread_id, text, **params)
+        return await self._call_sync(self._sync.turn_text, thread_id, text, params, **legacy_params)
 
-    async def turn_interrupt(self, thread_id: str, turn_id: str) -> dict[str, Any]:
+    async def turn_interrupt(self, thread_id: str, turn_id: str) -> JsonObject:
         return await self._call_sync(self._sync.turn_interrupt, thread_id, turn_id)
 
     async def turn_steer(
         self,
         thread_id: str,
         expected_turn_id: str,
-        input_items: list[dict[str, Any]] | dict[str, Any] | str,
-    ) -> dict[str, Any]:
+        input_items: list[JsonObject] | JsonObject | str,
+    ) -> JsonObject:
         return await self._call_sync(
             self._sync.turn_steer, thread_id, expected_turn_id, input_items
         )
 
-    async def model_list(self, include_hidden: bool = False) -> dict[str, Any]:
+    async def model_list(self, include_hidden: bool = False) -> JsonObject:
         return await self._call_sync(self._sync.model_list, include_hidden)
 
     def thread(self, thread_id: str) -> AsyncThreadSession:
         return AsyncThreadSession(client=self, thread_id=thread_id)
 
     async def thread_start_session(
-        self, *, model: str | None = None, **params: Any
+        self, *, model: str | None = None, params: V2ThreadStartParams | JsonObject | None = None
     ) -> AsyncThreadSession:
-        payload = dict(params)
-        if model is not None:
-            payload["model"] = model
-        started = await self.thread_start(**payload)
+        started = await self.thread_start(params=params if model is None else {**(params or {}), "model": model})
         return AsyncThreadSession(client=self, thread_id=started["thread"]["id"])
 
-    async def thread_start_typed(self, **params: Any) -> ThreadStartResult:
-        return await self._call_sync(self._sync.thread_start_typed, **params)
+    async def thread_start_typed(self, params: V2ThreadStartParams | JsonObject | None = None) -> ThreadStartResult:
+        return await self._call_sync(self._sync.thread_start_typed, params)
 
     async def thread_resume_typed(
-        self, thread_id: str, **params: Any
+        self, thread_id: str, params: V2ThreadResumeParams | JsonObject | None = None
     ) -> ThreadResumeResult:
         return await self._call_sync(
-            self._sync.thread_resume_typed, thread_id, **params
+            self._sync.thread_resume_typed, thread_id, params
         )
 
     async def thread_read_typed(
@@ -192,9 +191,9 @@ class AsyncAppServerClient:
         )
 
     async def thread_fork_typed(
-        self, thread_id: str, **params: Any
+        self, thread_id: str, params: V2ThreadForkParams | JsonObject | None = None
     ) -> ThreadForkResult:
-        return await self._call_sync(self._sync.thread_fork_typed, thread_id, **params)
+        return await self._call_sync(self._sync.thread_fork_typed, thread_id, params)
 
     async def thread_archive_typed(self, thread_id: str) -> EmptyResult:
         return await self._call_sync(self._sync.thread_archive_typed, thread_id)
@@ -205,8 +204,8 @@ class AsyncAppServerClient:
     async def thread_set_name_typed(self, thread_id: str, name: str) -> EmptyResult:
         return await self._call_sync(self._sync.thread_set_name_typed, thread_id, name)
 
-    async def thread_list_typed(self, **params: Any) -> ThreadListResult:
-        return await self._call_sync(self._sync.thread_list_typed, **params)
+    async def thread_list_typed(self, params: V2ThreadListParams | JsonObject | None = None) -> ThreadListResult:
+        return await self._call_sync(self._sync.thread_list_typed, params)
 
     async def model_list_typed(self, include_hidden: bool = False) -> ModelListResult:
         return await self._call_sync(self._sync.model_list_typed, include_hidden)
@@ -214,38 +213,38 @@ class AsyncAppServerClient:
     async def turn_start_typed(
         self,
         thread_id: str,
-        input_items: list[dict[str, Any]] | dict[str, Any] | str,
-        **params: Any,
+        input_items: list[JsonObject] | JsonObject | str,
+        params: V2TurnStartParams | JsonObject | None = None,
     ) -> TurnStartResult:
         return await self._call_sync(
-            self._sync.turn_start_typed, thread_id, input_items, **params
+            self._sync.turn_start_typed, thread_id, input_items, params
         )
 
     async def turn_text_typed(
-        self, thread_id: str, text: str, **params: Any
+        self, thread_id: str, text: str, params: V2TurnStartParams | JsonObject | None = None
     ) -> TurnStartResult:
         return await self._call_sync(
-            self._sync.turn_text_typed, thread_id, text, **params
+            self._sync.turn_text_typed, thread_id, text, params
         )
 
     async def turn_steer_typed(
         self,
         thread_id: str,
         expected_turn_id: str,
-        input_items: list[dict[str, Any]] | dict[str, Any] | str,
+        input_items: list[JsonObject] | JsonObject | str,
     ) -> TurnSteerResult:
         return await self._call_sync(
             self._sync.turn_steer_typed, thread_id, expected_turn_id, input_items
         )
 
-    async def thread_start_schema(self, **params: Any) -> SchemaThreadStartResponse:
-        return await self._call_sync(self._sync.thread_start_schema, **params)
+    async def thread_start_schema(self, params: V2ThreadStartParams | JsonObject | None = None) -> SchemaThreadStartResponse:
+        return await self._call_sync(self._sync.thread_start_schema, params)
 
     async def thread_resume_schema(
-        self, thread_id: str, **params: Any
+        self, thread_id: str, params: V2ThreadResumeParams | JsonObject | None = None
     ) -> SchemaThreadResumeResponse:
         return await self._call_sync(
-            self._sync.thread_resume_schema, thread_id, **params
+            self._sync.thread_resume_schema, thread_id, params
         )
 
     async def thread_read_schema(
@@ -255,13 +254,13 @@ class AsyncAppServerClient:
             self._sync.thread_read_schema, thread_id, include_turns
         )
 
-    async def thread_list_schema(self, **params: Any) -> SchemaThreadListResponse:
-        return await self._call_sync(self._sync.thread_list_schema, **params)
+    async def thread_list_schema(self, params: V2ThreadListParams | JsonObject | None = None) -> SchemaThreadListResponse:
+        return await self._call_sync(self._sync.thread_list_schema, params)
 
     async def thread_fork_schema(
-        self, thread_id: str, **params: Any
+        self, thread_id: str, params: V2ThreadForkParams | JsonObject | None = None
     ) -> SchemaThreadForkResponse:
-        return await self._call_sync(self._sync.thread_fork_schema, thread_id, **params)
+        return await self._call_sync(self._sync.thread_fork_schema, thread_id, params)
 
     async def thread_archive_schema(
         self, thread_id: str
@@ -286,25 +285,25 @@ class AsyncAppServerClient:
     async def turn_start_schema(
         self,
         thread_id: str,
-        input_items: list[dict[str, Any]] | dict[str, Any] | str,
-        **params: Any,
+        input_items: list[JsonObject] | JsonObject | str,
+        params: V2TurnStartParams | JsonObject | None = None,
     ) -> SchemaTurnStartResponse:
         return await self._call_sync(
-            self._sync.turn_start_schema, thread_id, input_items, **params
+            self._sync.turn_start_schema, thread_id, input_items, params
         )
 
     async def turn_text_schema(
-        self, thread_id: str, text: str, **params: Any
+        self, thread_id: str, text: str, params: V2TurnStartParams | JsonObject | None = None
     ) -> SchemaTurnStartResponse:
         return await self._call_sync(
-            self._sync.turn_text_schema, thread_id, text, **params
+            self._sync.turn_text_schema, thread_id, text, params
         )
 
     async def turn_steer_schema(
         self,
         thread_id: str,
         expected_turn_id: str,
-        input_items: list[dict[str, Any]] | dict[str, Any] | str,
+        input_items: list[JsonObject] | JsonObject | str,
     ) -> SchemaTurnSteerResponse:
         return await self._call_sync(
             self._sync.turn_steer_schema, thread_id, expected_turn_id, input_items
@@ -344,12 +343,12 @@ class AsyncAppServerClient:
     async def request_with_retry_on_overload(
         self,
         method: str,
-        params: dict[str, Any] | None = None,
+        params: JsonObject | None = None,
         *,
         max_attempts: int = 3,
         initial_delay_s: float = 0.25,
         max_delay_s: float = 2.0,
-    ) -> Any:
+    ) -> object:
         return await self._call_sync(
             self._sync.request_with_retry_on_overload,
             method,
@@ -371,10 +370,10 @@ class AsyncAppServerClient:
         return await self._call_sync(self._sync.stream_until_methods, methods)
 
     async def run_text_turn(
-        self, thread_id: str, text: str, **params: Any
+        self, thread_id: str, text: str, params: V2TurnStartParams | JsonObject | None = None
     ) -> tuple[str, Notification]:
         return await self._call_sync(
-            self._sync.run_text_turn, thread_id, text, **params
+            self._sync.run_text_turn, thread_id, text, params
         )
 
     async def ask_result(
@@ -391,8 +390,7 @@ class AsyncAppServerClient:
             self._sync.ask, text, model=model, thread_id=thread_id
         )
 
-    async def stream_text(self, thread_id: str, text: str, **params: Any) -> list[str]:
-        """Collect assistant delta chunks for a text turn."""
+    async def stream_text(self, thread_id: str, text: str, params: V2TurnStartParams | JsonObject | None = None) -> list[str]:
         return await self._call_sync(
-            lambda: list(self._sync.stream_text(thread_id, text, **params))
+            lambda: list(self._sync.stream_text(thread_id, text, params))
         )

@@ -1,26 +1,30 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TypeAlias
+
+JsonScalar: TypeAlias = str | int | float | bool | None
+JsonValue: TypeAlias = JsonScalar | dict[str, "JsonValue"] | list["JsonValue"]
+JsonObject: TypeAlias = dict[str, JsonValue]
 
 
 @dataclass(slots=True)
 class Notification:
     method: str
-    params: dict[str, Any] | None
+    params: JsonObject | object | None
 
 
 @dataclass(slots=True)
 class RequestMessage:
     id: str | int
     method: str
-    params: dict[str, Any] | None
+    params: JsonObject | None
 
 
 @dataclass(slots=True)
 class ResponseMessage:
     id: str | int
-    result: Any
+    result: object
 
 
 @dataclass(slots=True)
