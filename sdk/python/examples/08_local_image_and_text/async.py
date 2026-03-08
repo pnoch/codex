@@ -3,6 +3,9 @@ from base64 import b64decode
 from pathlib import Path
 
 from codex_app_server.async_client import AsyncAppServerClient
+from codex_app_server.generated.v2_all.AgentMessageDeltaNotification import AgentMessageDeltaNotification
+from codex_app_server.generated.v2_all.TurnCompletedNotification import TurnCompletedNotification
+from codex_app_server.public_types import ThreadStartParams
 
 HERE = Path(__file__).parent
 IMAGE_PATH = HERE / "sample.png"
@@ -19,7 +22,7 @@ async def main() -> None:
     async with AsyncAppServerClient() as client:
         await client.initialize()
         started = await client.thread_start(ThreadStartParams(model="gpt-5"))
-        thread_id = started["thread"]["id"]
+        thread_id = started.thread.id
 
         turn = await client.turn_start(
             thread_id,
@@ -31,7 +34,7 @@ async def main() -> None:
                 {"type": "localImage", "path": str(IMAGE_PATH.resolve())},
             ],
         )
-        turn_id = turn["turn"]["id"]
+        turn_id = turn.turn.id
         status, text = await _collect_until_completed(client, turn_id)
 
         print("Status:", status)
@@ -42,17 +45,19 @@ async def _collect_until_completed(
     client: AsyncAppServerClient, turn_id: str
 ) -> tuple[str, str]:
     chunks: list[str] = []
-    status = "unknown"
     while True:
         event = await client.next_notification()
-        if event.method == "item/agentMessage/delta":
-            chunks.append((event.params or {}).get("delta", ""))
+        if (
+            isinstance(event.payload, AgentMessageDeltaNotification)
+            and event.payload.turnId == turn_id
+        ):
+            chunks.append(event.payload.delta)
         if (
             event.method == "turn/completed"
-            and (event.params or {}).get("turn", {}).get("id") == turn_id
+            and isinstance(event.payload, TurnCompletedNotification)
+            and event.payload.turn.id == turn_id
         ):
-            status = (event.params or {}).get("turn", {}).get("status", "unknown")
-            return status, "".join(chunks).strip()
+            return str(event.payload.turn.status), "".join(chunks).strip()
 
 
 if __name__ == "__main__":

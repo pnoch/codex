@@ -1,10 +1,9 @@
-from codex_app_server import ThreadStartParams, Codex
+from codex_app_server import Codex, ThreadStartParams
+from codex_app_server.public_types import ThreadListParams
+
 
 with Codex() as codex:
     thread = codex.thread_start(ThreadStartParams(model="gpt-5"))
-
-    # Stable lifecycle calls without requiring model execution.
-    _ = codex.thread_list(limit=20)
-    _ = codex.thread_read(thread.id, include_turns=False)
-
+    _ = codex.thread_list(ThreadListParams(limit=20))
+    _ = thread.read(include_turns=False)
     print("Lifecycle OK:", thread.id)

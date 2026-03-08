@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 
 from codex_app_server.client import AppServerClient
+from codex_app_server.generated.v2_all.AgentMessageDeltaNotification import AgentMessageDeltaNotification
+from codex_app_server.generated.v2_all.TurnCompletedNotification import TurnCompletedNotification
 
 pytestmark = pytest.mark.skipif(
     os.getenv("RUN_REAL_CODEX_TESTS") != "1" or shutil.which("codex") is None,
@@ -73,38 +75,45 @@ def _run_example(
 def test_real_initialize_and_model_list():
     with AppServerClient() as client:
         out = client.initialize()
-        assert isinstance(out, dict)
+        assert out.serverInfo is None or out.serverInfo.name is None or isinstance(
+            out.serverInfo.name, str
+        )
         models = client.model_list(include_hidden=True)
-        assert "data" in models
+        assert isinstance(models.data, list)
 
 
 def test_real_thread_and_turn_start_smoke():
     with AppServerClient() as client:
         client.initialize()
         started = client.thread_start()
-        thread_id = started["thread"]["id"]
+        thread_id = started.thread.id
         assert isinstance(thread_id, str) and thread_id
 
         turn = client.turn_text(thread_id, "hello")
-        turn_id = turn["turn"]["id"]
+        turn_id = turn.turn.id
         assert isinstance(turn_id, str) and turn_id
 
 
 def test_real_streaming_smoke_turn_completed():
     with AppServerClient() as client:
         client.initialize()
-        thread_id = client.thread_start()["thread"]["id"]
+        thread_id = client.thread_start().thread.id
         turn = client.turn_text(thread_id, "Reply with one short sentence.")
-        turn_id = turn["turn"]["id"]
+        turn_id = turn.turn.id
 
         saw_delta = False
         completed = False
         for evt in client.stream_until_methods("turn/completed"):
-            if evt.method == "item/agentMessage/delta":
+            if (
+                evt.method == "item/agentMessage/delta"
+                and isinstance(evt.payload, AgentMessageDeltaNotification)
+                and evt.payload.turnId == turn_id
+            ):
                 saw_delta = True
             if (
                 evt.method == "turn/completed"
-                and (evt.params or {}).get("turn", {}).get("id") == turn_id
+                and isinstance(evt.payload, TurnCompletedNotification)
+                and evt.payload.turn.id == turn_id
             ):
                 completed = True
 
@@ -117,10 +126,10 @@ def test_real_streaming_smoke_turn_completed():
 def test_real_turn_interrupt_smoke():
     with AppServerClient() as client:
         client.initialize()
-        thread_id = client.thread_start()["thread"]["id"]
-        turn_id = client.turn_text(thread_id, "Count from 1 to 200 with commas.")[
-            "turn"
-        ]["id"]
+        thread_id = client.thread_start().thread.id
+        turn_id = client.turn_text(
+            thread_id, "Count from 1 to 200 with commas."
+        ).turn.id
 
         # Best effort: interrupting quickly may race with completion on fast models.
         client.turn_interrupt(thread_id, turn_id)

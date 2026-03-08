@@ -5,13 +5,15 @@ from codex_app_server.errors import (
     MethodNotFoundError,
     ServerBusyError,
 )
+from codex_app_server.generated.v2_all.ModelListResponse import ModelListResponse
+from codex_app_server.public_types import ThreadStartParams
 from codex_app_server.retry import retry_on_overload
 
 with AppServerClient() as client:
     client.initialize()
 
     started = client.thread_start(ThreadStartParams(model="gpt-5"))
-    thread_id = started["thread"]["id"]
+    thread_id = started.thread.id
 
     # Example 1: retry a turn on transient server overload.
     result = retry_on_overload(
@@ -22,12 +24,12 @@ with AppServerClient() as client:
         initial_delay_s=0.25,
         max_delay_s=2.0,
     )
-    print("Text:", result[0])
+    print("Text:", "".join(delta.delta for delta in result.deltas).strip())
 
     # Example 2: targeted exception handling for common RPC failures.
     try:
         # Deliberately call a missing method to demonstrate typed error handling.
-        client.request("demo/missingMethod", {})
+        client.request("demo/missingMethod", {}, response_model=ModelListResponse)
     except MethodNotFoundError as exc:
         print("Method not found:", exc.message)
     except InvalidParamsError as exc:

@@ -1,24 +1,31 @@
 from codex_app_server.client import AppServerClient
+from codex_app_server.generated.v2_all.AgentMessageDeltaNotification import AgentMessageDeltaNotification
+from codex_app_server.generated.v2_all.TurnCompletedNotification import TurnCompletedNotification
+from codex_app_server.public_types import ThreadStartParams
 
 with AppServerClient() as client:
     metadata = client.initialize()
-    server = metadata.get("serverInfo", {})
-    print("Server:", server.get("name"), server.get("version"))
+    server = metadata.serverInfo
+    print("Server:", server.name if server else None, server.version if server else None)
 
     started = client.thread_start(ThreadStartParams(model="gpt-5"))
-    thread_id = started["thread"]["id"]
+    thread_id = started.thread.id
 
     turn = client.turn_text(thread_id, "Say hello in one sentence.")
-    turn_id = turn["turn"]["id"]
+    turn_id = turn.turn.id
 
     chunks: list[str] = []
     while True:
         event = client.next_notification()
-        if event.method == "item/agentMessage/delta":
-            chunks.append((event.params or {}).get("delta", ""))
+        if (
+            isinstance(event.payload, AgentMessageDeltaNotification)
+            and event.payload.turnId == turn_id
+        ):
+            chunks.append(event.payload.delta)
         if (
             event.method == "turn/completed"
-            and (event.params or {}).get("turn", {}).get("id") == turn_id
+            and isinstance(event.payload, TurnCompletedNotification)
+            and event.payload.turn.id == turn_id
         ):
             break
 

@@ -5,4 +5,4 @@ with Codex() as codex:
     turn = thread.turn(TextInput("Write a short haiku about compilers."))
 
     for event in turn.stream():
-        print(event.method, event.params)
+        print(event.method, event.payload)

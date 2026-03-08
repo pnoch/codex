@@ -9,10 +9,10 @@ async def main() -> None:
         print("metadata:", metadata)
 
         models = await client.model_list(include_hidden=True)
-        data = models.get("data", [])
+        data = models.data
         print("models.count:", len(data))
         if data:
-            print("first model id:", data[0].get("id"))
+            print("first model id:", data[0].id)
 
 
 if __name__ == "__main__":

@@ -4,25 +4,11 @@ from dataclasses import dataclass
 from typing import Iterator
 
 from .client import AppServerClient, AppServerConfig
-from .public_types import (
-    AskForApproval,
-    ForkAskForApproval,
-    ForkSandboxMode,
-    Personality,
-    ResumeAskForApproval,
-    ResumePersonality,
-    ResumeSandboxMode,
-    SandboxMode,
-    ThreadForkParams,
-    ThreadListParams,
-    ThreadSortKey,
-    ThreadSourceKind,
-    ThreadStartParams,
-    ThreadResumeParams,
-    TurnStartParams,
-    TurnSteerParams,
-    TurnStatus,
-)
+from .generated.v2_all.AgentMessageDeltaNotification import AgentMessageDeltaNotification
+from .generated.v2_all.ThreadArchiveResponse import ThreadArchiveResponse
+from .generated.v2_all.ThreadSetNameResponse import ThreadSetNameResponse
+from .generated.v2_all.TurnCompletedNotification import TurnError
+from .generated.v2_all.TurnInterruptResponse import TurnInterruptResponse
 from .generated.v2_types import (
     ModelListResponse,
     ThreadCompactStartResponse,
@@ -33,25 +19,23 @@ from .generated.v2_types import (
     TurnCompletedNotificationPayload,
     TurnSteerResponse,
 )
-from .models import JsonObject, Notification
-
-
-def _event_params_dict(params: object | None) -> JsonObject:
-    if params is None:
-        return {}
-    if isinstance(params, dict):
-        return params
-    if hasattr(params, "model_dump"):
-        return params.model_dump(exclude_none=True)
-    return {}
+from .models import InitializeResponse, JsonObject, Notification
+from .public_types import (
+    ThreadForkParams,
+    ThreadListParams,
+    ThreadResumeParams,
+    ThreadStartParams,
+    TurnStartParams,
+    TurnStatus,
+)
 
 
 @dataclass(slots=True)
 class TurnResult:
     thread_id: str
     turn_id: str
-    status: TurnStatus | str
-    error: object | None
+    status: TurnStatus
+    error: TurnError | None
     text: str
     items: list[ThreadItem]
     usage: ThreadTokenUsageUpdatedNotification | None = None
@@ -115,11 +99,7 @@ def _to_wire_input(input: Input) -> list[JsonObject]:
 
 
 class Codex:
-    """Minimal public SDK surface for app-server v2.
-
-    Constructor is eager: it starts and initializes the app-server immediately.
-    Errors are raised directly from constructor for Pythonic fail-fast behavior.
-    """
+    """Minimal typed SDK surface for app-server v2."""
 
     def __init__(self, config: AppServerConfig | None = None) -> None:
         self._client = AppServerClient(config=config)
@@ -133,23 +113,17 @@ class Codex:
         self.close()
 
     @staticmethod
-    def _parse_initialize(payload: JsonObject) -> InitializeResult:
-        if not isinstance(payload, dict):
-            raise TypeError("initialize response must be a dict")
-        server = payload.get("serverInfo")
-        if isinstance(server, dict):
-            return InitializeResult(
-                server_name=server.get("name"),
-                server_version=server.get("version"),
-            )
-        # Some app-server builds may omit `serverInfo` in initialize payloads.
-        # Keep constructor fail-fast for transport/protocol errors, but allow
-        # metadata to be unknown instead of crashing on missing optional fields.
-        return InitializeResult()
+    def _parse_initialize(payload: InitializeResponse) -> InitializeResult:
+        server = payload.serverInfo
+        if server is None:
+            return InitializeResult()
+        return InitializeResult(
+            server_name=server.name,
+            server_version=server.version,
+        )
 
     @property
     def metadata(self) -> InitializeResult:
-        """Startup metadata captured during construction."""
         return self._init
 
     def close(self) -> None:
@@ -157,16 +131,16 @@ class Codex:
 
     def thread_start(self, params: ThreadStartParams) -> Thread:
         started = self._client.thread_start(params)
-        return Thread(self._client, started["thread"]["id"])
+        return Thread(self._client, started.thread.id)
 
     def thread(self, thread_id: str) -> Thread:
         return Thread(self._client, thread_id)
 
+    def thread_list(self, params: ThreadListParams | None = None) -> ThreadListResponse:
+        return self._client.thread_list(params)
+
     def models(self, *, include_hidden: bool = False) -> ModelListResponse:
-        result = self._client.model_list(include_hidden=include_hidden)
-        if not isinstance(result, dict):
-            raise TypeError("model/list response must be a dict")
-        return ModelListResponse.model_validate(result)
+        return self._client.model_list(include_hidden=include_hidden)
 
 
 @dataclass(slots=True)
@@ -178,51 +152,35 @@ class Thread:
         self,
         input: Input,
         *,
-        params: TurnStartParams | None = None,
+        params: TurnStartParams | JsonObject | None = None,
     ) -> Turn:
         turn = self._client.turn_start(self.id, _to_wire_input(input), params=params)
-        return Turn(self._client, self.id, turn["turn"]["id"])
+        return Turn(self._client, self.id, turn.turn.id)
 
     def resume(self, params: ThreadResumeParams) -> Thread:
         resumed = self._client.thread_resume(self.id, params)
-        tid = (resumed.get("thread") or {}).get("id")
-        if not isinstance(tid, str) or not tid:
-            raise ValueError("thread/resume response missing thread.id")
-        return Thread(self._client, tid)
+        return Thread(self._client, resumed.thread.id)
 
     def read(self, *, include_turns: bool = False) -> ThreadReadResponse:
-        result = self._client.thread_read(self.id, include_turns=include_turns)
-        if not isinstance(result, dict):
-            raise TypeError("thread/read response must be a dict")
-        return ThreadReadResponse.model_validate(result)
+        return self._client.thread_read(self.id, include_turns=include_turns)
 
     def fork(self, params: ThreadForkParams) -> Thread:
-        payload = params.model_dump(exclude_none=True, mode="json") if hasattr(params, "model_dump") else params
-        payload["threadId"] = self.id
-        forked = self._client.request("thread/fork", payload)
-        tid = (forked.get("thread") or {}).get("id")
-        if not isinstance(tid, str) or not tid:
-            raise ValueError("thread/fork response missing thread.id")
-        return Thread(self._client, tid)
+        forked = self._client.thread_fork(self.id, params)
+        return Thread(self._client, forked.thread.id)
 
-    def archive(self) -> None:
-        self._client.thread_archive(self.id)
+    def archive(self) -> ThreadArchiveResponse:
+        return self._client.thread_archive(self.id)
 
     def unarchive(self) -> Thread:
         unarchived = self._client.thread_unarchive(self.id)
-        tid = (unarchived.get("thread") or {}).get("id")
-        if not isinstance(tid, str) or not tid:
-            raise ValueError("thread/unarchive response missing thread.id")
-        return Thread(self._client, tid)
+        return Thread(self._client, unarchived.thread.id)
 
-    def set_name(self, name: str) -> None:
-        self._client.thread_set_name(self.id, name)
+    def set_name(self, name: str) -> ThreadSetNameResponse:
+        return self._client.thread_set_name(self.id, name)
 
     def compact(self) -> ThreadCompactStartResponse:
-        result = self._client.request("thread/compact", {"threadId": self.id})
-        if not isinstance(result, dict):
-            raise TypeError("thread/compact response must be a dict")
-        return ThreadCompactStartResponse.model_validate(result)
+        return self._client.thread_compact(self.id)
+
 
 @dataclass(slots=True)
 class Turn:
@@ -231,60 +189,54 @@ class Turn:
     id: str
 
     def steer(self, input: Input) -> TurnSteerResponse:
-        params = TurnSteerParams.model_validate(
-            {
-                "threadId": self.thread_id,
-                "expectedTurnId": self.id,
-                "input": _to_wire_input(input),
-            }
-        ).model_dump(exclude_none=True, mode="json")
-        result = self._client.request("turn/steer", params)
-        if not isinstance(result, dict):
-            raise TypeError("turn/steer response must be a dict")
-        return TurnSteerResponse.model_validate(result)
+        return self._client.turn_steer(self.thread_id, self.id, _to_wire_input(input))
 
-    def interrupt(self) -> None:
-        self._client.turn_interrupt(self.thread_id, self.id)
+    def interrupt(self) -> TurnInterruptResponse:
+        return self._client.turn_interrupt(self.thread_id, self.id)
 
     def stream(self) -> Iterator[Notification]:
-        """Yield all notifications for this turn until turn/completed."""
         while True:
             event = self._client.next_notification()
             yield event
             if (
                 event.method == "turn/completed"
-                and _event_params_dict(event.params).get("turn", {}).get("id") == self.id
+                and isinstance(event.payload, TurnCompletedNotificationPayload)
+                and event.payload.turn.id == self.id
             ):
                 break
 
     def run(self) -> TurnResult:
-        """Consume turn events and return typed `TurnResult` (completed + usage + text)."""
-        completed_payload: JsonObject | None = None
+        completed: TurnCompletedNotificationPayload | None = None
         usage: ThreadTokenUsageUpdatedNotification | None = None
         chunks: list[str] = []
 
         for event in self.stream():
-            if event.method == "item/agentMessage/delta":
-                chunks.append(_event_params_dict(event.params).get("delta", ""))
-            elif event.method == "thread/tokenUsageUpdated":
-                params = _event_params_dict(event.params)
-                if params.get("turnId") == self.id:
-                    usage = ThreadTokenUsageUpdatedNotification.model_validate(params)
-            elif (
-                event.method == "turn/completed"
-                and _event_params_dict(event.params).get("turn", {}).get("id") == self.id
+            payload = event.payload
+            if (
+                isinstance(payload, AgentMessageDeltaNotification)
+                and payload.turnId == self.id
             ):
-                completed_payload = _event_params_dict(event.params)
+                chunks.append(payload.delta)
+                continue
+            if (
+                isinstance(payload, ThreadTokenUsageUpdatedNotification)
+                and payload.turnId == self.id
+            ):
+                usage = payload
+                continue
+            if (
+                isinstance(payload, TurnCompletedNotificationPayload)
+                and payload.turn.id == self.id
+            ):
+                completed = payload
 
-        if completed_payload is None:
+        if completed is None:
             raise RuntimeError("turn completed event not received")
 
-        completed = TurnCompletedNotificationPayload.model_validate(completed_payload)
-        status = completed.turn.status
         return TurnResult(
             thread_id=completed.threadId,
             turn_id=completed.turn.id,
-            status=status,
+            status=completed.turn.status,
             error=completed.turn.error,
             text="".join(chunks),
             items=list(completed.turn.items or []),
