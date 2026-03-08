@@ -1,5 +1,22 @@
+from .errors import (
+    AppServerError,
+    AppServerRpcError,
+    InvalidParamsError,
+    InvalidRequestError,
+    InternalRpcError,
+    JsonRpcError,
+    MethodNotFoundError,
+    ParseError,
+    RetryLimitExceededError,
+    ServerBusyError,
+    TransportClosedError,
+    is_retryable_error,
+)
 from .generated.v2_types import ThreadItem
 from .public_api import (
+    AsyncCodex,
+    AsyncThread,
+    AsyncTurn,
     Codex,
     ImageInput,
     InitializeResult,
@@ -13,15 +30,25 @@ from .public_api import (
     Turn,
     TurnResult,
 )
-from .public_types import ThreadStartParams, TurnStartParams
+from .public_types import (
+    ThreadForkParams,
+    ThreadListParams,
+    ThreadResumeParams,
+    ThreadStartParams,
+    TurnStartParams,
+)
+from .retry import retry_on_overload
 
 __version__ = "0.2.0"
 
 __all__ = [
     "__version__",
     "Codex",
+    "AsyncCodex",
     "Thread",
+    "AsyncThread",
     "Turn",
+    "AsyncTurn",
     "TurnResult",
     "InitializeResult",
     "Input",
@@ -33,5 +60,21 @@ __all__ = [
     "MentionInput",
     "ThreadItem",
     "ThreadStartParams",
+    "ThreadResumeParams",
+    "ThreadListParams",
+    "ThreadForkParams",
     "TurnStartParams",
+    "retry_on_overload",
+    "AppServerError",
+    "TransportClosedError",
+    "JsonRpcError",
+    "AppServerRpcError",
+    "ParseError",
+    "InvalidRequestError",
+    "MethodNotFoundError",
+    "InvalidParamsError",
+    "InternalRpcError",
+    "ServerBusyError",
+    "RetryLimitExceededError",
+    "is_retryable_error",
 ]

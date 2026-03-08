@@ -8,9 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from codex_app_server.client import AppServerClient
-from codex_app_server.generated.v2_all.AgentMessageDeltaNotification import AgentMessageDeltaNotification
-from codex_app_server.generated.v2_all.TurnCompletedNotification import TurnCompletedNotification
+from codex_app_server import Codex, TextInput, ThreadStartParams
 
 pytestmark = pytest.mark.skipif(
     os.getenv("RUN_REAL_CODEX_TESTS") != "1" or shutil.which("codex") is None,
@@ -73,69 +71,53 @@ def _run_example(
 
 
 def test_real_initialize_and_model_list():
-    with AppServerClient() as client:
-        out = client.initialize()
-        assert out.serverInfo is None or out.serverInfo.name is None or isinstance(
-            out.serverInfo.name, str
-        )
-        models = client.model_list(include_hidden=True)
+    with Codex() as codex:
+        metadata = codex.metadata
+        assert metadata.server_name is None or isinstance(metadata.server_name, str)
+
+        models = codex.models(include_hidden=True)
         assert isinstance(models.data, list)
 
 
 def test_real_thread_and_turn_start_smoke():
-    with AppServerClient() as client:
-        client.initialize()
-        started = client.thread_start()
-        thread_id = started.thread.id
-        assert isinstance(thread_id, str) and thread_id
+    with Codex() as codex:
+        thread = codex.thread_start(ThreadStartParams(model="gpt-5"))
+        result = thread.turn(TextInput("hello")).run()
 
-        turn = client.turn_text(thread_id, "hello")
-        turn_id = turn.turn.id
-        assert isinstance(turn_id, str) and turn_id
+        assert isinstance(result.thread_id, str) and result.thread_id
+        assert isinstance(result.turn_id, str) and result.turn_id
 
 
 def test_real_streaming_smoke_turn_completed():
-    with AppServerClient() as client:
-        client.initialize()
-        thread_id = client.thread_start().thread.id
-        turn = client.turn_text(thread_id, "Reply with one short sentence.")
-        turn_id = turn.turn.id
+    with Codex() as codex:
+        thread = codex.thread_start(ThreadStartParams(model="gpt-5"))
+        turn = thread.turn(TextInput("Reply with one short sentence."))
 
         saw_delta = False
-        completed = False
-        for evt in client.stream_until_methods("turn/completed"):
-            if (
-                evt.method == "item/agentMessage/delta"
-                and isinstance(evt.payload, AgentMessageDeltaNotification)
-                and evt.payload.turnId == turn_id
-            ):
+        saw_completed = False
+        for evt in turn.stream():
+            if evt.method == "item/agentMessage/delta":
                 saw_delta = True
-            if (
-                evt.method == "turn/completed"
-                and isinstance(evt.payload, TurnCompletedNotification)
-                and evt.payload.turn.id == turn_id
-            ):
-                completed = True
+            if evt.method == "turn/completed":
+                saw_completed = True
 
-        assert completed
+        assert saw_completed
         # Some environments can produce zero deltas for very short output;
         # this assert keeps the smoke test informative but non-flaky.
         assert isinstance(saw_delta, bool)
 
 
 def test_real_turn_interrupt_smoke():
-    with AppServerClient() as client:
-        client.initialize()
-        thread_id = client.thread_start().thread.id
-        turn_id = client.turn_text(
-            thread_id, "Count from 1 to 200 with commas."
-        ).turn.id
+    with Codex() as codex:
+        thread = codex.thread_start(ThreadStartParams(model="gpt-5"))
+        turn = thread.turn(TextInput("Count from 1 to 200 with commas."))
 
         # Best effort: interrupting quickly may race with completion on fast models.
-        client.turn_interrupt(thread_id, turn_id)
+        _ = turn.interrupt()
 
-        events = client.stream_until_methods(["turn/completed", "error"])
-        assert events[-1].method in {"turn/completed", "error"}
+        # Confirm the session is still usable after interrupt race.
+        follow_up = thread.turn(TextInput("Say 'ok' only.")).run()
+        assert follow_up.status in {"completed", "failed"}
 
 
 @pytest.mark.parametrize(("folder", "script"), EXAMPLE_CASES)

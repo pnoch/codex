@@ -8,24 +8,24 @@
 
 ## `run()` vs `stream()`
 
-- `Turn.run()` is the easiest path. It consumes events until completion and returns `TurnResult`.
-- `Turn.stream()` yields raw notifications (`Notification`) so you can react event-by-event.
+- `Turn.run()` / `AsyncTurn.run()` is the easiest path. It consumes events until completion and returns `TurnResult`.
+- `Turn.stream()` / `AsyncTurn.stream()` yields raw notifications (`Notification`) so you can react event-by-event.
 
 Choose `run()` for most apps. Choose `stream()` for progress UIs, custom timeout logic, or custom parsing.
 
 ## Sync vs async clients
 
-- `Codex` is the minimal sync SDK and best default.
-- `AsyncAppServerClient` wraps the sync transport with `asyncio.to_thread(...)` for async-friendly call sites.
+- `Codex` is the sync public API.
+- `AsyncCodex` is an async replica of the same public API shape.
 
 If your app is not already async, stay with `Codex`.
 
-## `thread(...)` vs `thread_resume(...)`
+## `thread(...)` vs `thread.resume(...)`
 
-- `codex.thread(thread_id)` only binds a local helper to an existing thread ID.
-- `codex.thread_resume(thread_id, ...)` performs a `thread/resume` RPC and can apply overrides (model, instructions, sandbox, etc.).
+- `codex.thread(thread_id)` binds a helper to an existing thread ID.
+- `thread.resume(...)` performs an explicit `thread/resume` RPC and returns the resumed thread.
 
-Use `thread(...)` for simple continuation. Use `thread_resume(...)` when you need explicit resume semantics or override fields.
+Use `thread(...)` for simple continuation. Use `resume(...)` when you need explicit resume semantics or overrides.
 
 ## Why does constructor fail?
 
@@ -49,7 +49,7 @@ python scripts/update_sdk_artifacts.py --channel stable --bundle-all-platforms
 A turn is complete only when `turn/completed` arrives for that turn ID.
 
 - `run()` waits for this automatically.
-- With `stream()`, make sure you keep consuming notifications until completion.
+- With `stream()`, keep consuming notifications until completion.
 
 ## How do I retry safely?
 
@@ -60,6 +60,6 @@ Do not blindly retry all errors. For `InvalidParamsError` or `MethodNotFoundErro
 ## Common pitfalls
 
 - Starting a new thread for every prompt when you wanted continuity.
-- Forgetting to `close()` (or not using `with Codex() as codex:`).
+- Forgetting to `close()` (or not using context managers).
 - Ignoring `TurnResult.status` and `TurnResult.error`.
-- Mixing SDK input classes with raw dicts incorrectly in minimal API paths.
+- Mixing SDK input classes with raw dicts incorrectly.

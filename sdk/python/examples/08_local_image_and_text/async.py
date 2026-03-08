@@ -2,10 +2,7 @@ import asyncio
 from base64 import b64decode
 from pathlib import Path
 
-from codex_app_server.async_client import AsyncAppServerClient
-from codex_app_server.generated.v2_all.AgentMessageDeltaNotification import AgentMessageDeltaNotification
-from codex_app_server.generated.v2_all.TurnCompletedNotification import TurnCompletedNotification
-from codex_app_server.public_types import ThreadStartParams
+from codex_app_server import AsyncCodex, LocalImageInput, TextInput, ThreadStartParams
 
 HERE = Path(__file__).parent
 IMAGE_PATH = HERE / "sample.png"
@@ -19,45 +16,19 @@ if not IMAGE_PATH.exists():
 
 
 async def main() -> None:
-    async with AsyncAppServerClient() as client:
-        await client.initialize()
-        started = await client.thread_start(ThreadStartParams(model="gpt-5"))
-        thread_id = started.thread.id
+    async with AsyncCodex() as codex:
+        thread = await codex.thread_start(ThreadStartParams(model="gpt-5"))
 
-        turn = await client.turn_start(
-            thread_id,
+        turn = await thread.turn(
             [
-                {
-                    "type": "text",
-                    "text": "Read this local image and summarize what you see in 2 bullets.",
-                },
-                {"type": "localImage", "path": str(IMAGE_PATH.resolve())},
-            ],
+                TextInput("Read this local image and summarize what you see in 2 bullets."),
+                LocalImageInput(str(IMAGE_PATH.resolve())),
+            ]
         )
-        turn_id = turn.turn.id
-        status, text = await _collect_until_completed(client, turn_id)
+        result = await turn.run()
 
-        print("Status:", status)
-        print(text)
-
-
-async def _collect_until_completed(
-    client: AsyncAppServerClient, turn_id: str
-) -> tuple[str, str]:
-    chunks: list[str] = []
-    while True:
-        event = await client.next_notification()
-        if (
-            isinstance(event.payload, AgentMessageDeltaNotification)
-            and event.payload.turnId == turn_id
-        ):
-            chunks.append(event.payload.delta)
-        if (
-            event.method == "turn/completed"
-            and isinstance(event.payload, TurnCompletedNotification)
-            and event.payload.turn.id == turn_id
-        ):
-            return str(event.payload.turn.status), "".join(chunks).strip()
+        print("Status:", result.status)
+        print(result.text)
 
 
 if __name__ == "__main__":

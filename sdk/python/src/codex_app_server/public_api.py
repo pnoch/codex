@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterator
+from typing import AsyncIterator, Iterator
 
+from .async_client import AsyncAppServerClient
 from .client import AppServerClient, AppServerConfig
 from .generated.v2_all.AgentMessageDeltaNotification import AgentMessageDeltaNotification
 from .generated.v2_all.ThreadArchiveResponse import ThreadArchiveResponse
@@ -143,6 +144,58 @@ class Codex:
         return self._client.model_list(include_hidden=include_hidden)
 
 
+class AsyncCodex:
+    """Async mirror of :class:`Codex` with matching method shapes."""
+
+    def __init__(self, config: AppServerConfig | None = None) -> None:
+        self._client = AsyncAppServerClient(config=config)
+        self._init: InitializeResult | None = None
+        self._initialized = False
+
+    async def __aenter__(self) -> "AsyncCodex":
+        await self._ensure_initialized()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.close()
+
+    async def _ensure_initialized(self) -> None:
+        if self._initialized:
+            return
+        payload = await self._client.initialize()
+        self._init = Codex._parse_initialize(payload)
+        self._initialized = True
+
+    @property
+    def metadata(self) -> InitializeResult:
+        if self._init is None:
+            raise RuntimeError(
+                "AsyncCodex is not initialized yet. Use `async with AsyncCodex()` or call an async API first."
+            )
+        return self._init
+
+    async def close(self) -> None:
+        await self._client.close()
+        self._init = None
+        self._initialized = False
+
+    async def thread_start(self, params: ThreadStartParams) -> AsyncThread:
+        await self._ensure_initialized()
+        started = await self._client.thread_start(params)
+        return AsyncThread(self, started.thread.id)
+
+    def thread(self, thread_id: str) -> AsyncThread:
+        return AsyncThread(self, thread_id)
+
+    async def thread_list(self, params: ThreadListParams | None = None) -> ThreadListResponse:
+        await self._ensure_initialized()
+        return await self._client.thread_list(params)
+
+    async def models(self, *, include_hidden: bool = False) -> ModelListResponse:
+        await self._ensure_initialized()
+        return await self._client.model_list(include_hidden=include_hidden)
+
+
 @dataclass(slots=True)
 class Thread:
     _client: AppServerClient
@@ -183,6 +236,57 @@ class Thread:
 
 
 @dataclass(slots=True)
+class AsyncThread:
+    _codex: AsyncCodex
+    id: str
+
+    async def turn(
+        self,
+        input: Input,
+        *,
+        params: TurnStartParams | JsonObject | None = None,
+    ) -> AsyncTurn:
+        await self._codex._ensure_initialized()
+        turn = await self._codex._client.turn_start(
+            self.id,
+            _to_wire_input(input),
+            params=params,
+        )
+        return AsyncTurn(self._codex, self.id, turn.turn.id)
+
+    async def resume(self, params: ThreadResumeParams) -> AsyncThread:
+        await self._codex._ensure_initialized()
+        resumed = await self._codex._client.thread_resume(self.id, params)
+        return AsyncThread(self._codex, resumed.thread.id)
+
+    async def read(self, *, include_turns: bool = False) -> ThreadReadResponse:
+        await self._codex._ensure_initialized()
+        return await self._codex._client.thread_read(self.id, include_turns=include_turns)
+
+    async def fork(self, params: ThreadForkParams) -> AsyncThread:
+        await self._codex._ensure_initialized()
+        forked = await self._codex._client.thread_fork(self.id, params)
+        return AsyncThread(self._codex, forked.thread.id)
+
+    async def archive(self) -> ThreadArchiveResponse:
+        await self._codex._ensure_initialized()
+        return await self._codex._client.thread_archive(self.id)
+
+    async def unarchive(self) -> AsyncThread:
+        await self._codex._ensure_initialized()
+        unarchived = await self._codex._client.thread_unarchive(self.id)
+        return AsyncThread(self._codex, unarchived.thread.id)
+
+    async def set_name(self, name: str) -> ThreadSetNameResponse:
+        await self._codex._ensure_initialized()
+        return await self._codex._client.thread_set_name(self.id, name)
+
+    async def compact(self) -> ThreadCompactStartResponse:
+        await self._codex._ensure_initialized()
+        return await self._codex._client.thread_compact(self.id)
+
+
+@dataclass(slots=True)
 class Turn:
     _client: AppServerClient
     thread_id: str
@@ -211,6 +315,75 @@ class Turn:
         chunks: list[str] = []
 
         for event in self.stream():
+            payload = event.payload
+            if (
+                isinstance(payload, AgentMessageDeltaNotification)
+                and payload.turnId == self.id
+            ):
+                chunks.append(payload.delta)
+                continue
+            if (
+                isinstance(payload, ThreadTokenUsageUpdatedNotification)
+                and payload.turnId == self.id
+            ):
+                usage = payload
+                continue
+            if (
+                isinstance(payload, TurnCompletedNotificationPayload)
+                and payload.turn.id == self.id
+            ):
+                completed = payload
+
+        if completed is None:
+            raise RuntimeError("turn completed event not received")
+
+        return TurnResult(
+            thread_id=completed.threadId,
+            turn_id=completed.turn.id,
+            status=completed.turn.status,
+            error=completed.turn.error,
+            text="".join(chunks),
+            items=list(completed.turn.items or []),
+            usage=usage,
+        )
+
+
+@dataclass(slots=True)
+class AsyncTurn:
+    _codex: AsyncCodex
+    thread_id: str
+    id: str
+
+    async def steer(self, input: Input) -> TurnSteerResponse:
+        await self._codex._ensure_initialized()
+        return await self._codex._client.turn_steer(
+            self.thread_id,
+            self.id,
+            _to_wire_input(input),
+        )
+
+    async def interrupt(self) -> TurnInterruptResponse:
+        await self._codex._ensure_initialized()
+        return await self._codex._client.turn_interrupt(self.thread_id, self.id)
+
+    async def stream(self) -> AsyncIterator[Notification]:
+        await self._codex._ensure_initialized()
+        while True:
+            event = await self._codex._client.next_notification()
+            yield event
+            if (
+                event.method == "turn/completed"
+                and isinstance(event.payload, TurnCompletedNotificationPayload)
+                and event.payload.turn.id == self.id
+            ):
+                break
+
+    async def run(self) -> TurnResult:
+        completed: TurnCompletedNotificationPayload | None = None
+        usage: ThreadTokenUsageUpdatedNotification | None = None
+        chunks: list[str] = []
+
+        async for event in self.stream():
             payload = event.payload
             if (
                 isinstance(payload, AgentMessageDeltaNotification)

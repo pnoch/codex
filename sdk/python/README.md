@@ -1,6 +1,6 @@
 # Codex App Server Python SDK
 
-Python SDK for `codex app-server` JSON-RPC v2 over stdio, with a small default surface optimized for real scripts and apps.
+Python SDK for `codex app-server` JSON-RPC v2 over stdio, with a small typed public surface for sync and async apps.
 
 ## Install
 
@@ -9,15 +9,33 @@ cd sdk/python
 python -m pip install -e .
 ```
 
-## Quickstart
+## Quickstart (sync)
 
 ```python
-from codex_app_server import Codex, TextInput
+from codex_app_server import Codex, TextInput, ThreadStartParams
 
 with Codex() as codex:
-    thread = codex.thread_start(model="gpt-5")
+    thread = codex.thread_start(ThreadStartParams(model="gpt-5"))
     result = thread.turn(TextInput("Say hello in one sentence.")).run()
     print(result.text)
+```
+
+## Quickstart (async)
+
+```python
+import asyncio
+from codex_app_server import AsyncCodex, TextInput, ThreadStartParams
+
+
+async def main() -> None:
+    async with AsyncCodex() as codex:
+        thread = await codex.thread_start(ThreadStartParams(model="gpt-5"))
+        turn = await thread.turn(TextInput("Say hello in one sentence."))
+        result = await turn.run()
+        print(result.text)
+
+
+asyncio.run(main())
 ```
 
 ## Docs map
@@ -73,5 +91,5 @@ This refreshes all bundled OS/arch binaries and regenerates protocol-derived Pyt
 ## Notes
 
 - `Codex()` is eager and performs startup + `initialize` in the constructor.
-- Use context managers (`with Codex() as codex:`) to ensure shutdown.
-- For transient overload, use `codex_app_server.retry.retry_on_overload`.
+- `AsyncCodex` should be used with `async with AsyncCodex() as codex:`.
+- For transient overload, use `retry_on_overload(...)`.

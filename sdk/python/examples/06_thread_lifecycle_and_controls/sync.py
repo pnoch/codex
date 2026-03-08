@@ -1,5 +1,4 @@
-from codex_app_server import Codex, ThreadStartParams
-from codex_app_server.public_types import ThreadListParams
+from codex_app_server import Codex, ThreadListParams, ThreadStartParams
 
 
 with Codex() as codex:

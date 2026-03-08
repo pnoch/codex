@@ -1,49 +1,22 @@
 import asyncio
 
-from codex_app_server.async_client import AsyncAppServerClient
-from codex_app_server.generated.v2_all.AgentMessageDeltaNotification import AgentMessageDeltaNotification
-from codex_app_server.generated.v2_all.TurnCompletedNotification import TurnCompletedNotification
-from codex_app_server.public_types import ThreadStartParams
+from codex_app_server import AsyncCodex, ImageInput, TextInput, ThreadStartParams
 
 
 async def main() -> None:
-    async with AsyncAppServerClient() as client:
-        await client.initialize()
-        started = await client.thread_start(ThreadStartParams(model="gpt-5"))
-        thread_id = started.thread.id
+    async with AsyncCodex() as codex:
+        thread = await codex.thread_start(ThreadStartParams(model="gpt-5"))
 
-        turn = await client.turn_start(
-            thread_id,
+        turn = await thread.turn(
             [
-                {"type": "text", "text": "What is in this image? Give 3 bullets."},
-                {
-                    "type": "image",
-                    "url": "https://upload.wikimedia.org/wikipedia/commons/3/3a/Cat03.jpg",
-                },
-            ],
+                TextInput("What is in this image? Give 3 bullets."),
+                ImageInput("https://upload.wikimedia.org/wikipedia/commons/3/3a/Cat03.jpg"),
+            ]
         )
-        turn_id = turn.turn.id
-        status, text = await _collect_until_completed(client, turn_id)
+        result = await turn.run()
 
-        print("Status:", status)
-        print(text)
-
-
-async def _collect_until_completed(
-    client: AsyncAppServerClient, turn_id: str
-) -> tuple[str, str]:
-    chunks: list[str] = []
-    status = "unknown"
-    while True:
-        event = await client.next_notification()
-        if isinstance(event.payload, AgentMessageDeltaNotification):
-            chunks.append(event.payload.delta)
-        if (
-            event.method == "turn/completed"
-            and isinstance(event.payload, TurnCompletedNotification)
-            and event.payload.turn.id == turn_id
-        ):
-            return str(event.payload.turn.status), "".join(chunks).strip()
+        print("Status:", result.status)
+        print(result.text)
 
 
 if __name__ == "__main__":

@@ -3,18 +3,14 @@ import random
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
-from codex_app_server.async_client import AsyncAppServerClient
-from codex_app_server.errors import (
-    InvalidParamsError,
+from codex_app_server import (
+    AsyncCodex,
     JsonRpcError,
-    MethodNotFoundError,
     ServerBusyError,
+    TextInput,
+    ThreadStartParams,
     is_retryable_error,
 )
-from codex_app_server.generated.v2_all.AgentMessageDeltaNotification import AgentMessageDeltaNotification
-from codex_app_server.generated.v2_all.ModelListResponse import ModelListResponse
-from codex_app_server.generated.v2_all.TurnCompletedNotification import TurnCompletedNotification
-from codex_app_server.public_types import ThreadStartParams
 
 ResultT = TypeVar("ResultT")
 
@@ -47,57 +43,37 @@ async def retry_on_overload_async(
 
 
 async def main() -> None:
-    async with AsyncAppServerClient() as client:
-        await client.initialize()
-
-        started = await client.thread_start(ThreadStartParams(model="gpt-5"))
-        thread_id = started.thread.id
-
-        turn = await retry_on_overload_async(
-            lambda: client.turn_text(
-                thread_id, "Summarize retry best practices in 3 bullets."
-            ),
-            max_attempts=3,
-            initial_delay_s=0.25,
-            max_delay_s=2.0,
-        )
-        turn_id = turn.turn.id
-        text = await _collect_text_until_completed(client, turn_id)
-        print("Text:", text)
+    async with AsyncCodex() as codex:
+        thread = await codex.thread_start(ThreadStartParams(model="gpt-5"))
 
         try:
-            await client.request(
-                "demo/missingMethod",
-                {},
-                response_model=ModelListResponse,
+            result = await retry_on_overload_async(
+                _run_turn(thread, "Summarize retry best practices in 3 bullets."),
+                max_attempts=3,
+                initial_delay_s=0.25,
+                max_delay_s=2.0,
             )
-        except MethodNotFoundError as exc:
-            print("Method not found:", exc.message)
-        except InvalidParamsError as exc:
-            print("Invalid params:", exc.message)
         except ServerBusyError as exc:
             print("Server overloaded after retries:", exc.message)
+            print("Text:")
+            return
         except JsonRpcError as exc:
             print(f"JSON-RPC error {exc.code}: {exc.message}")
+            print("Text:")
+            return
+
+        if result.status == "failed":
+            print("Turn failed:", result.error)
+
+        print("Text:", result.text)
 
 
-async def _collect_text_until_completed(
-    client: AsyncAppServerClient, turn_id: str
-) -> str:
-    chunks: list[str] = []
-    while True:
-        event = await client.next_notification()
-        if (
-            isinstance(event.payload, AgentMessageDeltaNotification)
-            and event.payload.turnId == turn_id
-        ):
-            chunks.append(event.payload.delta)
-        if (
-            event.method == "turn/completed"
-            and isinstance(event.payload, TurnCompletedNotification)
-            and event.payload.turn.id == turn_id
-        ):
-            return "".join(chunks).strip()
+def _run_turn(thread, prompt: str):
+    async def _inner():
+        turn = await thread.turn(TextInput(prompt))
+        return await turn.run()
+
+    return _inner
 
 
 if __name__ == "__main__":

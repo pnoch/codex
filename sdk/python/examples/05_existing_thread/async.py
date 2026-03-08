@@ -1,54 +1,20 @@
 import asyncio
 
-from codex_app_server.async_client import AsyncAppServerClient
-from codex_app_server.generated.v2_all.AgentMessageDeltaNotification import AgentMessageDeltaNotification
-from codex_app_server.generated.v2_all.TurnCompletedNotification import TurnCompletedNotification
-from codex_app_server.public_types import ThreadStartParams
+from codex_app_server import AsyncCodex, TextInput, ThreadStartParams
 
 
 async def main() -> None:
-    async with AsyncAppServerClient() as client:
-        await client.initialize()
+    async with AsyncCodex() as codex:
+        original = await codex.thread_start(ThreadStartParams(model="gpt-5"))
 
-        created = await client.thread_start(ThreadStartParams(model="gpt-5"))
-        thread_id = created.thread.id
+        first_turn = await original.turn(TextInput("Tell me one fact about Saturn."))
+        first = await first_turn.run()
+        print("Created thread:", first.thread_id)
 
-        first = await client.turn_text(thread_id, "Tell me one fact about Saturn.")
-        await _wait_completed(client, first.turn.id)
-        print("Created thread:", thread_id)
-
-        resumed = await client.thread_resume(thread_id)
-        resumed_id = resumed.thread.id
-        second = await client.turn_text(resumed_id, "Continue with one more fact.")
-        text = await _collect_text_until_completed(client, second.turn.id)
-        print(text)
-
-
-async def _wait_completed(client: AsyncAppServerClient, turn_id: str) -> None:
-    while True:
-        event = await client.next_notification()
-        if (
-            event.method == "turn/completed"
-            and isinstance(event.payload, TurnCompletedNotification)
-            and event.payload.turn.id == turn_id
-        ):
-            return
-
-
-async def _collect_text_until_completed(
-    client: AsyncAppServerClient, turn_id: str
-) -> str:
-    chunks: list[str] = []
-    while True:
-        event = await client.next_notification()
-        if isinstance(event.payload, AgentMessageDeltaNotification):
-            chunks.append(event.payload.delta)
-        if (
-            event.method == "turn/completed"
-            and isinstance(event.payload, TurnCompletedNotification)
-            and event.payload.turn.id == turn_id
-        ):
-            return "".join(chunks).strip()
+        resumed = codex.thread(first.thread_id)
+        second_turn = await resumed.turn(TextInput("Continue with one more fact."))
+        second = await second_turn.run()
+        print(second.text)
 
 
 if __name__ == "__main__":

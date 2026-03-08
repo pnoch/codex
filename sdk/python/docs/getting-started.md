@@ -1,6 +1,6 @@
 # Getting Started
 
-This is the fastest path from install to a multi-turn thread using the minimal SDK surface.
+This is the fastest path from install to a multi-turn thread using the public SDK surface.
 
 ## 1) Install
 
@@ -15,17 +15,17 @@ Requirements:
 
 - Python `>=3.10`
 - bundled runtime binary for your platform (shipped in package)
-- Local Codex auth/session configured
+- local Codex auth/session configured
 
-## 2) Run your first turn
+## 2) Run your first turn (sync)
 
 ```python
-from codex_app_server import Codex, TextInput
+from codex_app_server import Codex, TextInput, ThreadStartParams
 
 with Codex() as codex:
     print("Server:", codex.metadata.server_name, codex.metadata.server_version)
 
-    thread = codex.thread_start(model="gpt-5")
+    thread = codex.thread_start(ThreadStartParams(model="gpt-5"))
     result = thread.turn(TextInput("Say hello in one sentence.")).run()
 
     print("Thread:", result.thread_id)
@@ -43,10 +43,10 @@ What happened:
 ## 3) Continue the same thread (multi-turn)
 
 ```python
-from codex_app_server import Codex, TextInput
+from codex_app_server import Codex, TextInput, ThreadStartParams
 
 with Codex() as codex:
-    thread = codex.thread_start(model="gpt-5")
+    thread = codex.thread_start(ThreadStartParams(model="gpt-5"))
 
     first = thread.turn(TextInput("Summarize Rust ownership in 2 bullets.")).run()
     second = thread.turn(TextInput("Now explain it to a Python developer.")).run()
@@ -55,7 +55,25 @@ with Codex() as codex:
     print("second:", second.text)
 ```
 
-## 4) Resume an existing thread
+## 4) Async parity
+
+```python
+import asyncio
+from codex_app_server import AsyncCodex, TextInput, ThreadStartParams
+
+
+async def main() -> None:
+    async with AsyncCodex() as codex:
+        thread = await codex.thread_start(ThreadStartParams(model="gpt-5"))
+        turn = await thread.turn(TextInput("Continue where we left off."))
+        result = await turn.run()
+        print(result.text)
+
+
+asyncio.run(main())
+```
+
+## 5) Resume an existing thread
 
 ```python
 from codex_app_server import Codex, TextInput
@@ -68,7 +86,7 @@ with Codex() as codex:
     print(result.text)
 ```
 
-## 5) Next stops
+## 6) Next stops
 
 - API surface and signatures: `docs/api-reference.md`
 - Common decisions/pitfalls: `docs/faq.md`

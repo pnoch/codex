@@ -1,18 +1,16 @@
 import asyncio
 
-from codex_app_server.async_client import AsyncAppServerClient
+from codex_app_server import AsyncCodex
 
 
 async def main() -> None:
-    async with AsyncAppServerClient() as client:
-        metadata = await client.initialize()
-        print("metadata:", metadata)
+    async with AsyncCodex() as codex:
+        print("metadata:", codex.metadata)
 
-        models = await client.model_list(include_hidden=True)
-        data = models.data
-        print("models.count:", len(data))
-        if data:
-            print("first model id:", data[0].id)
+        models = await codex.models(include_hidden=True)
+        print("models.count:", len(models.data))
+        if models.data:
+            print("first model id:", models.data[0].id)
 
 
 if __name__ == "__main__":

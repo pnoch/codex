@@ -1,62 +1,52 @@
 # Codex App Server SDK — API Reference
 
-Public surface of `codex_app_server` for app-server v2. See docs/getting-started.md for a walkthrough.
+Public surface of `codex_app_server` for app-server v2.
 
 ## Package Entry
 
 ```python
 from codex_app_server import (
     Codex,
-    Thread, Turn, TurnResult,
+    AsyncCodex,
+    Thread,
+    AsyncThread,
+    Turn,
+    AsyncTurn,
+    TurnResult,
     InitializeResult,
-    Input, InputItem,
-    TextInput, ImageInput, LocalImageInput, SkillInput, MentionInput,
-    ThreadItem,  # event item model
+    Input,
+    InputItem,
+    TextInput,
+    ImageInput,
+    LocalImageInput,
+    SkillInput,
+    MentionInput,
+    ThreadItem,
+    ThreadStartParams,
+    ThreadResumeParams,
+    ThreadListParams,
+    ThreadForkParams,
+    TurnStartParams,
 )
 ```
 
 - Version: `codex_app_server.__version__`
 - Requires Python >= 3.10
 
-## Codex
+## Codex (sync)
 
 ```python
 Codex(config: AppServerConfig | None = None)
 ```
 
-- `metadata -> InitializeResult` — server name/version captured at startup.
-- `close() -> None` — closes transport; also on context manager exit.
+Properties/methods:
 
-Thread/session methods:
-
-```python
-thread_start(*, approval_policy=None, base_instructions=None, config=None,
-             cwd=None, developer_instructions=None, ephemeral=None,
-             model=None, model_provider=None, personality=None,
-             sandbox=None) -> Thread
-
-thread(thread_id: str) -> Thread
-
-thread_resume(thread_id: str, *, approval_policy=None, base_instructions=None,
-              config=None, cwd=None, developer_instructions=None,
-              model=None, model_provider=None, sandbox=None) -> Thread
-
-thread_read(thread_id: str) -> ThreadReadResponse
-thread_list(*, limit: int | None = None, cursor: str | None = None,
-            include_archived: bool | None = None) -> ThreadListResponse
-thread_fork(thread_id: str, *, approval_policy=None, base_instructions=None,
-            config=None, cwd=None, developer_instructions=None,
-            model=None, model_provider=None, sandbox=None) -> Thread
-thread_archive(thread_id: str) -> None
-thread_unarchive(thread_id: str) -> Thread
-thread_set_name(thread_id: str, name: str) -> None
-thread_compact(thread_id: str) -> ThreadCompactStartResponse
-
-turn_steer(thread_id: str, expected_turn_id: str, input: Input) -> TurnSteerResponse
-turn_interrupt(thread_id: str, turn_id: str) -> None
-
-models(*, include_hidden: bool = False) -> ModelListResponse
-```
+- `metadata -> InitializeResult`
+- `close() -> None`
+- `thread_start(params: ThreadStartParams) -> Thread`
+- `thread(thread_id: str) -> Thread`
+- `thread_list(params: ThreadListParams | None = None) -> ThreadListResponse`
+- `models(*, include_hidden: bool = False) -> ModelListResponse`
 
 Context manager:
 
@@ -65,40 +55,82 @@ with Codex() as codex:
     ...
 ```
 
-## Thread
+## AsyncCodex (async parity)
 
 ```python
-@dataclass
-class Thread:
-    id: str
-
-    def turn(self, input: Input) -> Turn: ...
+AsyncCodex(config: AppServerConfig | None = None)
 ```
 
-## Turn
+Properties/methods:
+
+- `metadata -> InitializeResult`
+- `close() -> Awaitable[None]`
+- `thread_start(params: ThreadStartParams) -> Awaitable[AsyncThread]`
+- `thread(thread_id: str) -> AsyncThread`
+- `thread_list(params: ThreadListParams | None = None) -> Awaitable[ThreadListResponse]`
+- `models(*, include_hidden: bool = False) -> Awaitable[ModelListResponse]`
+
+Async context manager:
 
 ```python
-@dataclass
-class Turn:
-    thread_id: str
-    id: str
-
-    def stream(self) -> Iterable[Notification]: ...
-    def run(self) -> TurnResult: ...
+async with AsyncCodex() as codex:
+    ...
 ```
 
-`run()` returns:
+## Thread / AsyncThread
+
+`Thread` and `AsyncThread` share the same shape and intent.
+
+### Thread
+
+- `turn(input: Input, *, params: TurnStartParams | dict[str, object] | None = None) -> Turn`
+- `resume(params: ThreadResumeParams) -> Thread`
+- `read(*, include_turns: bool = False) -> ThreadReadResponse`
+- `fork(params: ThreadForkParams) -> Thread`
+- `archive() -> ThreadArchiveResponse`
+- `unarchive() -> Thread`
+- `set_name(name: str) -> ThreadSetNameResponse`
+- `compact() -> ThreadCompactStartResponse`
+
+### AsyncThread
+
+- `turn(input: Input, *, params: TurnStartParams | dict[str, object] | None = None) -> Awaitable[AsyncTurn]`
+- `resume(params: ThreadResumeParams) -> Awaitable[AsyncThread]`
+- `read(*, include_turns: bool = False) -> Awaitable[ThreadReadResponse]`
+- `fork(params: ThreadForkParams) -> Awaitable[AsyncThread]`
+- `archive() -> Awaitable[ThreadArchiveResponse]`
+- `unarchive() -> Awaitable[AsyncThread]`
+- `set_name(name: str) -> Awaitable[ThreadSetNameResponse]`
+- `compact() -> Awaitable[ThreadCompactStartResponse]`
+
+## Turn / AsyncTurn
+
+### Turn
+
+- `steer(input: Input) -> TurnSteerResponse`
+- `interrupt() -> TurnInterruptResponse`
+- `stream() -> Iterator[Notification]`
+- `run() -> TurnResult`
+
+### AsyncTurn
+
+- `steer(input: Input) -> Awaitable[TurnSteerResponse]`
+- `interrupt() -> Awaitable[TurnInterruptResponse]`
+- `stream() -> AsyncIterator[Notification]`
+- `run() -> Awaitable[TurnResult]`
+
+## TurnResult
 
 ```python
 @dataclass
 class TurnResult:
     thread_id: str
     turn_id: str
-    status: str
-    error: Any | None
+    status: TurnStatus
+    error: TurnError | None
     text: str
     items: list[ThreadItem]
-    usage: ThreadTokenUsageUpdatedNotification | None = None
+    usage: ThreadTokenUsageUpdatedNotification | None
 ```
 
 ## Inputs
@@ -114,39 +146,29 @@ InputItem = TextInput | ImageInput | LocalImageInput | SkillInput | MentionInput
 Input = list[InputItem] | InputItem
 ```
 
-Example:
+## Retry + errors
 
 ```python
+from codex_app_server import (
+    retry_on_overload,
+    JsonRpcError,
+    MethodNotFoundError,
+    InvalidParamsError,
+    ServerBusyError,
+    is_retryable_error,
+)
+```
+
+- `retry_on_overload(...)` retries transient overload errors with exponential backoff + jitter.
+- `is_retryable_error(exc)` checks if an exception is transient/overload-like.
+
+## Example
+
+```python
+from codex_app_server import Codex, TextInput, ThreadStartParams
+
 with Codex() as codex:
-    thread = codex.thread_start(model="gpt-5")
+    thread = codex.thread_start(ThreadStartParams(model="gpt-5"))
     result = thread.turn(TextInput("Say hello in one sentence.")).run()
     print(result.text)
 ```
-
-## Conversation Helpers
-
-Fluent helpers for thread-scoped calls:
-
-```python
-from codex_app_server.conversation import ThreadSession, AsyncThreadSession
-```
-
-- `ThreadSession(client, thread_id)` — sync helper; `ask`, `stream`, `turn_text`, etc.
-- `AsyncThreadSession(client, thread_id)` — async counterpart.
-
-## Retry Helper
-
-```python
-from codex_app_server.retry import retry_on_overload
-```
-
-- Retries on transient overload (`ServerBusyError`) with exponential backoff + jitter.
-
-## Errors
-
-Common exceptions in `codex_app_server.errors`:
-
-- `AppServerError` (base)
-- `JsonRpcError`, `AppServerRpcError`, and specific subclasses like `InvalidParamsError`, `ServerBusyError`, `RetryLimitExceededError`
-- `is_retryable_error(exc) -> bool`
-

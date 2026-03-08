@@ -1,9 +1,11 @@
 # Python SDK Examples
 
-Each example folder contains both runnable versions:
+Each example folder contains runnable versions:
 
-- `sync.py` (synchronous client surface)
-- `async.py` (async client surface)
+- `sync.py` (public sync surface: `Codex`)
+- `async.py` (public async surface: `AsyncCodex`)
+
+All examples intentionally use only public SDK exports from `codex_app_server`.
 
 ## Run format
 
@@ -40,8 +42,8 @@ python examples/01_quickstart_constructor/async.py
 - `08_local_image_and_text/`
   - local image + text multimodal turn (auto-downloads sample image)
 - `09_async_parity/`
-  - same flow in sync and async styles
+  - parity-style sync flow (see async parity in other examples)
 - `10_error_handling_and_retry/`
-  - typed JSON-RPC errors + overload retry pattern
+  - overload retry pattern + typed error handling structure
 - `11_cli_mini_app/`
   - interactive chat loop
