@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
 
-from codex_app_server import Codex, TextInput
+from codex_app_server import AsyncCodex, Codex, TextInput
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLES_DIR = ROOT / "examples"
+NOTEBOOK_PATH = ROOT / "notebooks" / "sdk_walkthrough.ipynb"
 
 # 11_cli_mini_app is interactive; we still run it by feeding '/exit'.
 EXAMPLE_CASES: list[tuple[str, str]] = [
@@ -66,10 +70,17 @@ def _run_example(
     )
 
 
+def _notebook_cell_source(cell_index: int) -> str:
+    notebook = json.loads(NOTEBOOK_PATH.read_text())
+    return "".join(notebook["cells"][cell_index]["source"])
+
+
 def test_real_initialize_and_model_list():
     with Codex() as codex:
         metadata = codex.metadata
-        assert metadata.server_name is None or isinstance(metadata.server_name, str)
+        assert isinstance(metadata.user_agent, str) and metadata.user_agent.strip()
+        assert isinstance(metadata.server_name, str) and metadata.server_name.strip()
+        assert isinstance(metadata.server_version, str) and metadata.server_version.strip()
 
         models = codex.models(include_hidden=True)
         assert isinstance(models.data, list)
@@ -80,8 +91,71 @@ def test_real_thread_and_turn_start_smoke():
         thread = codex.thread_start(model="gpt-5", config={"model_reasoning_effort": "high"})
         result = thread.turn(TextInput("hello")).run()
 
-        assert isinstance(result.thread_id, str) and result.thread_id
-        assert isinstance(result.turn_id, str) and result.turn_id
+        assert isinstance(result.thread_id, str) and result.thread_id.strip()
+        assert isinstance(result.turn_id, str) and result.turn_id.strip()
+        assert isinstance(result.items, list)
+        assert result.usage is not None
+        assert result.usage.threadId == result.thread_id
+        assert result.usage.turnId == result.turn_id
+
+
+def test_real_async_thread_turn_usage_and_ids_smoke() -> None:
+    async def _run() -> None:
+        async with AsyncCodex() as codex:
+            thread = await codex.thread_start(model="gpt-5", config={"model_reasoning_effort": "high"})
+            result = await (await thread.turn(TextInput("say ok"))).run()
+
+            assert isinstance(result.thread_id, str) and result.thread_id.strip()
+            assert isinstance(result.turn_id, str) and result.turn_id.strip()
+            assert isinstance(result.items, list)
+            assert result.usage is not None
+            assert result.usage.threadId == result.thread_id
+            assert result.usage.turnId == result.turn_id
+
+    asyncio.run(_run())
+
+
+def test_real_codex_event_ids_are_not_blank_strings() -> None:
+    with Codex() as codex:
+        thread = codex.thread_start(model="gpt-5", config={"model_reasoning_effort": "high"})
+        turn = thread.turn(TextInput("Reply in one short sentence."))
+
+        saw_codex_event = False
+        for event in turn.stream():
+            if event.method.startswith("codex/event/"):
+                saw_codex_event = True
+                payload = event.payload
+                for field in ("id", "conversationId"):
+                    value = getattr(payload, field, None)
+                    assert value is None or (isinstance(value, str) and value.strip())
+
+            if event.method == "turn/completed":
+                break
+
+        assert saw_codex_event
+
+
+def test_notebook_bootstrap_resolves_sdk_from_unrelated_cwd() -> None:
+    cell_1_source = _notebook_cell_source(1)
+
+    with tempfile.TemporaryDirectory() as temp_cwd:
+        result = subprocess.run(
+            [sys.executable, "-c", cell_1_source],
+            cwd=temp_cwd,
+            env=os.environ.copy(),
+            text=True,
+            capture_output=True,
+            timeout=60,
+            check=False,
+        )
+
+    assert result.returncode == 0, (
+        f"Notebook bootstrap failed from unrelated cwd.\n"
+        f"STDOUT:\n{result.stdout}\n"
+        f"STDERR:\n{result.stderr}"
+    )
+    assert "SDK source:" in result.stdout
+    assert "codex_app_server" in result.stdout or "sdk/python/src" in result.stdout
 
 
 def test_real_streaming_smoke_turn_completed():
@@ -130,12 +204,17 @@ def test_real_examples_run_and_assert(folder: str, script: str):
     # Minimal content assertions so we validate behavior, not just exit code.
     if folder == "01_quickstart_constructor":
         assert "Status:" in out and "Text:" in out
+        assert "Server: None None" not in out
     elif folder == "02_turn_run":
         assert "thread_id:" in out and "turn_id:" in out and "status:" in out
+        assert "usage: None" not in out
     elif folder == "03_turn_stream_events":
         assert "turn/completed" in out
+        assert "UnknownNotification" not in out
     elif folder == "04_models_and_metadata":
         assert "models.count:" in out
+        assert "server_name=None" not in out
+        assert "server_version=None" not in out
     elif folder == "05_existing_thread":
         assert "Created thread:" in out
     elif folder == "06_thread_lifecycle_and_controls":
@@ -152,3 +231,4 @@ def test_real_examples_run_and_assert(folder: str, script: str):
         assert "Status:" in out and "Usage:" in out
     elif folder == "13_model_select_and_turn_params":
         assert "selected.model:" in out and "agent.message.params:" in out and "usage.params:" in out
+        assert "usage.params: None" not in out
