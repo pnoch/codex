@@ -34,7 +34,10 @@ codex_rust_crate(
         "models.json",
         "prompt.md",
     ],
-    test_data_extra = [
+    test_data_extra = glob(
+        ["src/**/snapshots/**"],
+        allow_empty = True,
+    ) + [
         "config.schema.json",
     ] + glob([
         "src/**/snapshots/**",
