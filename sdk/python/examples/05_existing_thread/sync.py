@@ -18,6 +18,6 @@ with Codex() as codex:
     print("Created thread:", first.thread_id)
 
     # Resume the existing thread by ID.
-    resumed = codex.thread(first.thread_id)
+    resumed = codex.thread_resume(first.thread_id)
     second = resumed.turn(TextInput("Continue with one more fact.")).run()
     print(second.text)

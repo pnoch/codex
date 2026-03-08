@@ -290,9 +290,6 @@ class Codex:
         return Thread(self._client, unarchived.thread.id)
     # END GENERATED: Codex.flat_methods
 
-    def thread(self, thread_id: str) -> Thread:
-        return Thread(self._client, thread_id)
-
     def models(self, *, include_hidden: bool = False) -> ModelListResponse:
         return self._client.model_list(include_hidden=include_hidden)
 
@@ -454,9 +451,6 @@ class AsyncCodex:
         unarchived = await self._client.thread_unarchive(thread_id)
         return AsyncThread(self, unarchived.thread.id)
     # END GENERATED: AsyncCodex.flat_methods
-
-    def thread(self, thread_id: str) -> AsyncThread:
-        return AsyncThread(self, thread_id)
 
     async def models(self, *, include_hidden: bool = False) -> ModelListResponse:
         await self._ensure_initialized()

@@ -22,7 +22,7 @@ async def main() -> None:
         first = await first_turn.run()
         print("Created thread:", first.thread_id)
 
-        resumed = codex.thread(first.thread_id)
+        resumed = await codex.thread_resume(first.thread_id)
         second_turn = await resumed.turn(TextInput("Continue with one more fact."))
         second = await second_turn.run()
         print(second.text)

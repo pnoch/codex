@@ -160,6 +160,8 @@ def test_lifecycle_methods_are_codex_scoped() -> None:
     assert hasattr(AsyncCodex, "thread_fork")
     assert hasattr(AsyncCodex, "thread_archive")
     assert hasattr(AsyncCodex, "thread_unarchive")
+    assert not hasattr(Codex, "thread")
+    assert not hasattr(AsyncCodex, "thread")
 
     assert not hasattr(Thread, "resume")
     assert not hasattr(Thread, "fork")

@@ -17,7 +17,7 @@ with Codex() as codex:
     first = thread.turn(TextInput("One sentence about structured planning.")).run()
     second = thread.turn(TextInput("Now restate it for a junior engineer.")).run()
 
-    reopened = codex.thread(thread.id)
+    reopened = codex.thread_resume(thread.id)
     listing_active = codex.thread_list(limit=20, archived=False)
     reading = reopened.read(include_turns=True)
 

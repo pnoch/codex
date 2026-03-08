@@ -20,7 +20,7 @@ async def main() -> None:
         first = await (await thread.turn(TextInput("One sentence about structured planning."))).run()
         second = await (await thread.turn(TextInput("Now restate it for a junior engineer."))).run()
 
-        reopened = codex.thread(thread.id)
+        reopened = await codex.thread_resume(thread.id)
         listing_active = await codex.thread_list(limit=20, archived=False)
         reading = await reopened.read(include_turns=True)
 

@@ -81,7 +81,7 @@ from codex_app_server import Codex, TextInput
 THREAD_ID = "thr_123"  # replace with a real id
 
 with Codex() as codex:
-    thread = codex.thread(THREAD_ID)
+    thread = codex.thread_resume(THREAD_ID)
     result = thread.turn(TextInput("Continue where we left off.")).run()
     print(result.text)
 ```
