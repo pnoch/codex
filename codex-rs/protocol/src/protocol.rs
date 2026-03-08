@@ -2999,6 +2999,16 @@ pub struct CollabAgentSpawnBeginEvent {
     pub prompt: String,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS, Default)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum AgentSpawnMode {
+    #[default]
+    Spawn,
+    Fork,
+    Watchdog,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS)]
 pub struct CollabAgentRef {
     /// Thread ID of the receiver/new agent.
@@ -3023,16 +3033,6 @@ pub struct CollabAgentStatusEntry {
     pub agent_role: Option<String>,
     /// Last known status of the agent.
     pub status: AgentStatus,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, JsonSchema, TS, Default)]
-#[serde(rename_all = "snake_case")]
-#[ts(rename_all = "snake_case")]
-pub enum AgentSpawnMode {
-    #[default]
-    Spawn,
-    Fork,
-    Watchdog,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, JsonSchema, TS)]
