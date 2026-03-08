@@ -21,15 +21,6 @@ python -m pip install -U pip
 python -m pip install -e .
 ```
 
-If you want to use a specific interpreter (example: Homebrew Python 3.13), use that exact binary for both install and run:
-
-```bash
-/opt/homebrew/bin/python3.13 -m pip install -e .
-/opt/homebrew/bin/python3.13 examples/01_quickstart_constructor/async.py
-```
-
-If you see `ModuleNotFoundError: No module named 'pydantic'`, it usually means install and run used different Python interpreters.
-
 ## Run examples
 
 From `sdk/python`:
