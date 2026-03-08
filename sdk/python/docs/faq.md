@@ -20,6 +20,22 @@ Choose `run()` for most apps. Choose `stream()` for progress UIs, custom timeout
 
 If your app is not already async, stay with `Codex`.
 
+## Public kwargs are snake_case
+
+Public API keyword names are snake_case. The SDK still maps them to wire camelCase under the hood.
+
+If you are migrating older code, update these names:
+
+- `approvalPolicy` -> `approval_policy`
+- `baseInstructions` -> `base_instructions`
+- `developerInstructions` -> `developer_instructions`
+- `modelProvider` -> `model_provider`
+- `modelProviders` -> `model_providers`
+- `sortKey` -> `sort_key`
+- `sourceKinds` -> `source_kinds`
+- `outputSchema` -> `output_schema`
+- `sandboxPolicy` -> `sandbox_policy`
+
 ## `thread(...)` vs `thread.resume(...)`
 
 - `codex.thread(thread_id)` binds a helper to an existing thread ID.

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Callable, Iterable, ParamSpec, TypeVar
+from collections.abc import Iterator
+from typing import AsyncIterator, Callable, Iterable, ParamSpec, TypeVar
 
 from pydantic import BaseModel
 
@@ -37,8 +38,10 @@ ReturnT = TypeVar("ReturnT")
 class AsyncAppServerClient:
     """Async wrapper around AppServerClient using thread offloading."""
 
-    def __init__(self, config: AppServerConfig | None = None):
+    def __init__(self, config: AppServerConfig | None = None) -> None:
         self._sync = AppServerClient(config=config)
+        # Single stdio transport cannot be read safely from multiple threads.
+        self._transport_lock = asyncio.Lock()
 
     async def __aenter__(self) -> "AsyncAppServerClient":
         await self.start()
@@ -54,7 +57,17 @@ class AsyncAppServerClient:
         *args: ParamsT.args,
         **kwargs: ParamsT.kwargs,
     ) -> ReturnT:
-        return await asyncio.to_thread(fn, *args, **kwargs)
+        async with self._transport_lock:
+            return await asyncio.to_thread(fn, *args, **kwargs)
+
+    @staticmethod
+    def _next_from_iterator(
+        iterator: Iterator[AgentMessageDeltaNotification],
+    ) -> tuple[bool, AgentMessageDeltaNotification | None]:
+        try:
+            return True, next(iterator)
+        except StopIteration:
+            return False, None
 
     async def start(self) -> None:
         await self._call_sync(self._sync.start)
@@ -235,7 +248,14 @@ class AsyncAppServerClient:
         thread_id: str,
         text: str,
         params: V2TurnStartParams | JsonObject | None = None,
-    ) -> list[AgentMessageDeltaNotification]:
-        return await self._call_sync(
-            lambda: list(self._sync.stream_text(thread_id, text, params))
-        )
+    ) -> AsyncIterator[AgentMessageDeltaNotification]:
+        async with self._transport_lock:
+            iterator = self._sync.stream_text(thread_id, text, params)
+            while True:
+                has_value, chunk = await asyncio.to_thread(
+                    self._next_from_iterator,
+                    iterator,
+                )
+                if not has_value:
+                    break
+                yield chunk

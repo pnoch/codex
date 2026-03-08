@@ -1,3 +1,4 @@
+from .client import AppServerConfig
 from .errors import (
     AppServerError,
     AppServerRpcError,
@@ -48,6 +49,7 @@ __version__ = "0.2.0"
 
 __all__ = [
     "__version__",
+    "AppServerConfig",
     "Codex",
     "AsyncCodex",
     "Thread",

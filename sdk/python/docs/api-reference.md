@@ -38,9 +38,9 @@ Properties/methods:
 
 - `metadata -> InitializeResult`
 - `close() -> None`
-- `thread_start(*, approvalPolicy=None, baseInstructions=None, config=None, cwd=None, developerInstructions=None, ephemeral=None, model=None, modelProvider=None, personality=None, sandbox=None) -> Thread`
+- `thread_start(*, approval_policy=None, base_instructions=None, config=None, cwd=None, developer_instructions=None, ephemeral=None, model=None, model_provider=None, personality=None, sandbox=None) -> Thread`
 - `thread(thread_id: str) -> Thread`
-- `thread_list(*, archived=None, cursor=None, cwd=None, limit=None, modelProviders=None, sortKey=None, sourceKinds=None) -> ThreadListResponse`
+- `thread_list(*, archived=None, cursor=None, cwd=None, limit=None, model_providers=None, sort_key=None, source_kinds=None) -> ThreadListResponse`
 - `models(*, include_hidden: bool = False) -> ModelListResponse`
 
 Context manager:
@@ -60,9 +60,9 @@ Properties/methods:
 
 - `metadata -> InitializeResult`
 - `close() -> Awaitable[None]`
-- `thread_start(*, approvalPolicy=None, baseInstructions=None, config=None, cwd=None, developerInstructions=None, ephemeral=None, model=None, modelProvider=None, personality=None, sandbox=None) -> Awaitable[AsyncThread]`
+- `thread_start(*, approval_policy=None, base_instructions=None, config=None, cwd=None, developer_instructions=None, ephemeral=None, model=None, model_provider=None, personality=None, sandbox=None) -> Awaitable[AsyncThread]`
 - `thread(thread_id: str) -> AsyncThread`
-- `thread_list(*, archived=None, cursor=None, cwd=None, limit=None, modelProviders=None, sortKey=None, sourceKinds=None) -> Awaitable[ThreadListResponse]`
+- `thread_list(*, archived=None, cursor=None, cwd=None, limit=None, model_providers=None, sort_key=None, source_kinds=None) -> Awaitable[ThreadListResponse]`
 - `models(*, include_hidden: bool = False) -> Awaitable[ModelListResponse]`
 
 Async context manager:
@@ -78,10 +78,10 @@ async with AsyncCodex() as codex:
 
 ### Thread
 
-- `turn(input: Input, *, approvalPolicy=None, cwd=None, effort=None, model=None, outputSchema=None, personality=None, sandboxPolicy=None, summary=None) -> Turn`
-- `resume(*, approvalPolicy=None, baseInstructions=None, config=None, cwd=None, developerInstructions=None, model=None, modelProvider=None, personality=None, sandbox=None) -> Thread`
+- `turn(input: Input, *, approval_policy=None, cwd=None, effort=None, model=None, output_schema=None, personality=None, sandbox_policy=None, summary=None) -> Turn`
+- `resume(*, approval_policy=None, base_instructions=None, config=None, cwd=None, developer_instructions=None, model=None, model_provider=None, personality=None, sandbox=None) -> Thread`
 - `read(*, include_turns: bool = False) -> ThreadReadResponse`
-- `fork(*, approvalPolicy=None, baseInstructions=None, config=None, cwd=None, developerInstructions=None, model=None, modelProvider=None, sandbox=None) -> Thread`
+- `fork(*, approval_policy=None, base_instructions=None, config=None, cwd=None, developer_instructions=None, model=None, model_provider=None, sandbox=None) -> Thread`
 - `archive() -> ThreadArchiveResponse`
 - `unarchive() -> Thread`
 - `set_name(name: str) -> ThreadSetNameResponse`
@@ -89,10 +89,10 @@ async with AsyncCodex() as codex:
 
 ### AsyncThread
 
-- `turn(input: Input, *, approvalPolicy=None, cwd=None, effort=None, model=None, outputSchema=None, personality=None, sandboxPolicy=None, summary=None) -> Awaitable[AsyncTurn]`
-- `resume(*, approvalPolicy=None, baseInstructions=None, config=None, cwd=None, developerInstructions=None, model=None, modelProvider=None, personality=None, sandbox=None) -> Awaitable[AsyncThread]`
+- `turn(input: Input, *, approval_policy=None, cwd=None, effort=None, model=None, output_schema=None, personality=None, sandbox_policy=None, summary=None) -> Awaitable[AsyncTurn]`
+- `resume(*, approval_policy=None, base_instructions=None, config=None, cwd=None, developer_instructions=None, model=None, model_provider=None, personality=None, sandbox=None) -> Awaitable[AsyncThread]`
 - `read(*, include_turns: bool = False) -> Awaitable[ThreadReadResponse]`
-- `fork(*, approvalPolicy=None, baseInstructions=None, config=None, cwd=None, developerInstructions=None, model=None, modelProvider=None, sandbox=None) -> Awaitable[AsyncThread]`
+- `fork(*, approval_policy=None, base_instructions=None, config=None, cwd=None, developer_instructions=None, model=None, model_provider=None, sandbox=None) -> Awaitable[AsyncThread]`
 - `archive() -> Awaitable[ThreadArchiveResponse]`
 - `unarchive() -> Awaitable[AsyncThread]`
 - `set_name(name: str) -> Awaitable[ThreadSetNameResponse]`

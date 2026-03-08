@@ -133,7 +133,7 @@ class AsyncThreadSession:
         text: str,
         params: V2TurnStartParams | JsonObject | None = None,
     ) -> AsyncIterator[AgentMessageDeltaNotification]:
-        for chunk in await self.client.stream_text(self.thread_id, text, params):
+        async for chunk in self.client.stream_text(self.thread_id, text, params):
             yield chunk
 
     async def stream(
