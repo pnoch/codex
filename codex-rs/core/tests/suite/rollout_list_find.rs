@@ -9,6 +9,7 @@ use codex_core::RolloutRecorder;
 use codex_core::RolloutRecorderParams;
 use codex_core::config::ConfigBuilder;
 use codex_core::find_archived_thread_path_by_id_str;
+use codex_core::find_or_unarchive_thread_path_by_id_str;
 use codex_core::find_thread_path_by_id_str;
 use codex_core::find_thread_path_by_name_str;
 use codex_protocol::ThreadId;
@@ -218,14 +219,28 @@ async fn find_archived_locates_rollout_file_by_id() {
 }
 
 #[tokio::test]
-async fn find_unarchives_archived_rollout_file_by_id() {
+async fn find_thread_path_by_id_str_does_not_unarchive_archived_rollout() {
+    let home = TempDir::new().unwrap();
+    let id = Uuid::new_v4();
+    let archived = write_minimal_rollout_with_id_in_subdir(home.path(), "archived_sessions", id);
+
+    let found = find_thread_path_by_id_str(home.path(), &id.to_string())
+        .await
+        .unwrap();
+
+    assert_eq!(found, None);
+    assert!(archived.exists());
+}
+
+#[tokio::test]
+async fn find_or_unarchive_restores_archived_rollout_file_by_id() {
     let home = TempDir::new().unwrap();
     let id = Uuid::new_v4();
     let archived = write_minimal_rollout_with_id_in_subdir(home.path(), "archived_sessions", id);
     let file_name = archived.file_name().unwrap().to_owned();
     let expected_restored = home.path().join("sessions/2024/01/01").join(file_name);
 
-    let found = find_thread_path_by_id_str(home.path(), &id.to_string())
+    let found = find_or_unarchive_thread_path_by_id_str(home.path(), &id.to_string())
         .await
         .unwrap();
 
@@ -266,7 +281,7 @@ async fn find_does_not_move_unrelated_file_for_stale_archived_db_path() {
         .await
         .unwrap();
 
-    let found = find_thread_path_by_id_str(home.path(), &requested_id.to_string())
+    let found = find_or_unarchive_thread_path_by_id_str(home.path(), &requested_id.to_string())
         .await
         .unwrap();
 
