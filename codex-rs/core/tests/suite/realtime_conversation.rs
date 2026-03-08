@@ -666,6 +666,16 @@ async fn conversation_uses_experimental_realtime_ws_startup_context_override() -
         }))
         .await?;
 
+    wait_for_event_match(&test.codex, |msg| match msg {
+        EventMsg::RealtimeConversationRealtime(RealtimeConversationRealtimeEvent {
+            payload: RealtimeEvent::SessionUpdated { session_id, .. },
+        }) if session_id == "sess_custom_context" => Some(Ok(())),
+        EventMsg::Error(err) => Some(Err(err.clone())),
+        _ => None,
+    })
+    .await
+    .unwrap_or_else(|err: ErrorEvent| panic!("conversation start failed: {err:?}"));
+
     let startup_context_request = server.wait_for_request(1, 0).await;
     let instructions = websocket_request_instructions(&startup_context_request)
         .expect("custom startup context request should contain instructions");
@@ -714,6 +724,16 @@ async fn conversation_disables_realtime_startup_context_with_empty_override() ->
         }))
         .await?;
 
+    wait_for_event_match(&test.codex, |msg| match msg {
+        EventMsg::RealtimeConversationRealtime(RealtimeConversationRealtimeEvent {
+            payload: RealtimeEvent::SessionUpdated { session_id, .. },
+        }) if session_id == "sess_no_context" => Some(Ok(())),
+        EventMsg::Error(err) => Some(Err(err.clone())),
+        _ => None,
+    })
+    .await
+    .unwrap_or_else(|err: ErrorEvent| panic!("conversation start failed: {err:?}"));
+
     let startup_context_request = server.wait_for_request(1, 0).await;
     let instructions = websocket_request_instructions(&startup_context_request)
         .expect("startup context disable request should contain instructions");
@@ -758,6 +778,16 @@ async fn conversation_start_injects_startup_context_from_thread_history() -> Res
         }))
         .await?;
 
+    wait_for_event_match(&test.codex, |msg| match msg {
+        EventMsg::RealtimeConversationRealtime(RealtimeConversationRealtimeEvent {
+            payload: RealtimeEvent::SessionUpdated { session_id, .. },
+        }) if session_id == "sess_context" => Some(Ok(())),
+        EventMsg::Error(err) => Some(Err(err.clone())),
+        _ => None,
+    })
+    .await
+    .unwrap_or_else(|err: ErrorEvent| panic!("conversation start failed: {err:?}"));
+
     let startup_context_request = server.wait_for_request(1, 0).await;
     let startup_context = websocket_request_instructions(&startup_context_request)
         .expect("startup context request should contain instructions");
@@ -801,6 +831,16 @@ async fn conversation_startup_context_falls_back_to_workspace_map() -> Result<()
             session_id: None,
         }))
         .await?;
+
+    wait_for_event_match(&test.codex, |msg| match msg {
+        EventMsg::RealtimeConversationRealtime(RealtimeConversationRealtimeEvent {
+            payload: RealtimeEvent::SessionUpdated { session_id, .. },
+        }) if session_id == "sess_workspace" => Some(Ok(())),
+        EventMsg::Error(err) => Some(Err(err.clone())),
+        _ => None,
+    })
+    .await
+    .unwrap_or_else(|err: ErrorEvent| panic!("conversation start failed: {err:?}"));
 
     let startup_context_request = server.wait_for_request(1, 0).await;
     let startup_context = websocket_request_instructions(&startup_context_request)
