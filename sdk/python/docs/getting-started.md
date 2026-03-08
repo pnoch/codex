@@ -25,7 +25,7 @@ from codex_app_server import Codex, TextInput, ThreadStartParams
 with Codex() as codex:
     print("Server:", codex.metadata.server_name, codex.metadata.server_version)
 
-    thread = codex.thread_start(ThreadStartParams(model="gpt-5"))
+    thread = codex.thread_start(ThreadStartParams(model="gpt-5", config={"model_reasoning_effort": "high"}))
     result = thread.turn(TextInput("Say hello in one sentence.")).run()
 
     print("Thread:", result.thread_id)
@@ -46,7 +46,7 @@ What happened:
 from codex_app_server import Codex, TextInput, ThreadStartParams
 
 with Codex() as codex:
-    thread = codex.thread_start(ThreadStartParams(model="gpt-5"))
+    thread = codex.thread_start(ThreadStartParams(model="gpt-5", config={"model_reasoning_effort": "high"}))
 
     first = thread.turn(TextInput("Summarize Rust ownership in 2 bullets.")).run()
     second = thread.turn(TextInput("Now explain it to a Python developer.")).run()
@@ -64,7 +64,7 @@ from codex_app_server import AsyncCodex, TextInput, ThreadStartParams
 
 async def main() -> None:
     async with AsyncCodex() as codex:
-        thread = await codex.thread_start(ThreadStartParams(model="gpt-5"))
+        thread = await codex.thread_start(ThreadStartParams(model="gpt-5", config={"model_reasoning_effort": "high"}))
         turn = await thread.turn(TextInput("Continue where we left off."))
         result = await turn.run()
         print(result.text)

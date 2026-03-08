@@ -15,7 +15,7 @@ python -m pip install -e .
 from codex_app_server import Codex, TextInput, ThreadStartParams
 
 with Codex() as codex:
-    thread = codex.thread_start(ThreadStartParams(model="gpt-5"))
+    thread = codex.thread_start(ThreadStartParams(model="gpt-5", config={"model_reasoning_effort": "high"}))
     result = thread.turn(TextInput("Say hello in one sentence.")).run()
     print(result.text)
 ```
@@ -29,7 +29,7 @@ from codex_app_server import AsyncCodex, TextInput, ThreadStartParams
 
 async def main() -> None:
     async with AsyncCodex() as codex:
-        thread = await codex.thread_start(ThreadStartParams(model="gpt-5"))
+        thread = await codex.thread_start(ThreadStartParams(model="gpt-5", config={"model_reasoning_effort": "high"}))
         turn = await thread.turn(TextInput("Say hello in one sentence."))
         result = await turn.run()
         print(result.text)

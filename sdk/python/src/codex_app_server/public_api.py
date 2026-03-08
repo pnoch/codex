@@ -162,6 +162,7 @@ class AsyncCodex:
     async def _ensure_initialized(self) -> None:
         if self._initialized:
             return
+        await self._client.start()
         payload = await self._client.initialize()
         self._init = Codex._parse_initialize(payload)
         self._initialized = True

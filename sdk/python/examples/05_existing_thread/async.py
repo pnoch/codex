@@ -5,7 +5,7 @@ from codex_app_server import AsyncCodex, TextInput, ThreadStartParams
 
 async def main() -> None:
     async with AsyncCodex() as codex:
-        original = await codex.thread_start(ThreadStartParams(model="gpt-5"))
+        original = await codex.thread_start(ThreadStartParams(model="gpt-5", config={"model_reasoning_effort": "high"}))
 
         first_turn = await original.turn(TextInput("Tell me one fact about Saturn."))
         first = await first_turn.run()

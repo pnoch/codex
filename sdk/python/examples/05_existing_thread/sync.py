@@ -2,7 +2,7 @@ from codex_app_server import ThreadStartParams, Codex, TextInput
 
 with Codex() as codex:
     # Create an initial thread and turn so we have a real thread to resume.
-    original = codex.thread_start(ThreadStartParams(model="gpt-5"))
+    original = codex.thread_start(ThreadStartParams(model="gpt-5", config={"model_reasoning_effort": "high"}))
     first = original.turn(TextInput("Tell me one fact about Saturn.")).run()
     print("Created thread:", first.thread_id)
 

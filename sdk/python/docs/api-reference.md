@@ -168,7 +168,7 @@ from codex_app_server import (
 from codex_app_server import Codex, TextInput, ThreadStartParams
 
 with Codex() as codex:
-    thread = codex.thread_start(ThreadStartParams(model="gpt-5"))
+    thread = codex.thread_start(ThreadStartParams(model="gpt-5", config={"model_reasoning_effort": "high"}))
     result = thread.turn(TextInput("Say hello in one sentence.")).run()
     print(result.text)
 ```

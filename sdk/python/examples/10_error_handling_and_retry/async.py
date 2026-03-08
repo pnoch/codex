@@ -44,7 +44,7 @@ async def retry_on_overload_async(
 
 async def main() -> None:
     async with AsyncCodex() as codex:
-        thread = await codex.thread_start(ThreadStartParams(model="gpt-5"))
+        thread = await codex.thread_start(ThreadStartParams(model="gpt-5", config={"model_reasoning_effort": "high"}))
 
         try:
             result = await retry_on_overload_async(

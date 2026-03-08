@@ -17,7 +17,7 @@ if not IMAGE_PATH.exists():
 
 async def main() -> None:
     async with AsyncCodex() as codex:
-        thread = await codex.thread_start(ThreadStartParams(model="gpt-5"))
+        thread = await codex.thread_start(ThreadStartParams(model="gpt-5", config={"model_reasoning_effort": "high"}))
 
         turn = await thread.turn(
             [

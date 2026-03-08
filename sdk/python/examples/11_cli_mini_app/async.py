@@ -7,7 +7,7 @@ async def main() -> None:
     print("Codex async mini CLI. Type /exit to quit.")
 
     async with AsyncCodex() as codex:
-        thread = await codex.thread_start(ThreadStartParams(model="gpt-5"))
+        thread = await codex.thread_start(ThreadStartParams(model="gpt-5", config={"model_reasoning_effort": "high"}))
         print("Thread:", thread.id)
 
         while True:

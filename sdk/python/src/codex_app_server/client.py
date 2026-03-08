@@ -87,6 +87,7 @@ from .models import (
     JsonValue,
     Notification,
     TextTurnResult,
+    UnknownNotification,
 )
 from .retry import retry_on_overload
 
@@ -564,9 +565,10 @@ class AppServerClient:
 
     def _coerce_notification(self, method: str, params: object) -> Notification:
         model = _NOTIFICATION_MODELS.get(method)
-        if model is None:
-            raise AppServerError(f"Unsupported notification method: {method}")
         params_dict = params if isinstance(params, dict) else {}
+        if model is None:
+            # Accept newer server notifications without breaking current SDK flows.
+            return Notification(method=method, payload=UnknownNotification(params=params_dict))
         payload = model.model_validate(params_dict)
         return Notification(method=method, payload=payload)
 

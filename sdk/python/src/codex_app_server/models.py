@@ -60,6 +60,11 @@ JsonValue: TypeAlias = JsonScalar | dict[str, "JsonValue"] | list["JsonValue"]
 JsonObject: TypeAlias = dict[str, JsonValue]
 
 
+@dataclass(slots=True)
+class UnknownNotification:
+    params: JsonObject
+
+
 NotificationPayload: TypeAlias = (
     AccountLoginCompletedNotification
     | AccountRateLimitsUpdatedNotification
@@ -90,6 +95,7 @@ NotificationPayload: TypeAlias = (
     | TurnPlanUpdatedNotification
     | TurnStartedNotification
     | WindowsWorldWritableWarningNotification
+    | UnknownNotification
 )
 
 
@@ -97,7 +103,6 @@ NotificationPayload: TypeAlias = (
 class Notification:
     method: str
     payload: NotificationPayload
-
 
 class ServerInfo(BaseModel):
     name: str | None = None

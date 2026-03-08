@@ -7,7 +7,7 @@ async def main() -> None:
     async with AsyncCodex() as codex:
         print("Server:", codex.metadata.server_name, codex.metadata.server_version)
 
-        thread = await codex.thread_start(ThreadStartParams(model="gpt-5"))
+        thread = await codex.thread_start(ThreadStartParams(model="gpt-5", config={"model_reasoning_effort": "high"}))
         turn = await thread.turn(TextInput("Say hello in one sentence."))
         result = await turn.run()
 
