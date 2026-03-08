@@ -69,6 +69,8 @@ Runtime binary source (single source, no fallback):
 - `src/codex_app_server/bin/windows-arm64/codex.exe`
 - `src/codex_app_server/bin/windows-x64/codex.exe`
 
+`AppServerConfig().codex_bin` automatically points to the current platform file from this bundled list.
+
 ## Maintainer workflow (refresh binaries/types)
 
 ```bash

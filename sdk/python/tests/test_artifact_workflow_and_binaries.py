@@ -6,6 +6,8 @@ import platform
 import sys
 from pathlib import Path
 
+from codex_app_server.client import AppServerConfig
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -43,12 +45,7 @@ def test_generate_types_wires_all_generation_steps() -> None:
             if isinstance(fn, ast.Name):
                 calls.append(fn.id)
 
-    assert calls == [
-        "generate_v2_all",
-        "generate_notification_registry",
-        "generate_codex_event_types",
-        "generate_public_api_flat_methods",
-    ]
+    assert calls == ["generate_v2_all", "generate_public_api_flat_methods"]
 
 
 def test_bundled_binaries_exist_for_all_supported_platforms() -> None:
@@ -59,42 +56,8 @@ def test_bundled_binaries_exist_for_all_supported_platforms() -> None:
 
 
 def test_default_runtime_uses_current_platform_bundled_binary() -> None:
-    client_source = (ROOT / "src" / "codex_app_server" / "client.py").read_text()
-    client_tree = ast.parse(client_source)
-
-    # Keep this assertion source-level so it works in both PR2 (types foundation)
-    # and PR3 (full SDK), regardless of runtime module wiring.
-    app_server_config = next(
-        (
-            node
-            for node in client_tree.body
-            if isinstance(node, ast.ClassDef) and node.name == "AppServerConfig"
-        ),
-        None,
-    )
-    assert app_server_config is not None
-
-    codex_bin_field = next(
-        (
-            node
-            for node in app_server_config.body
-            if isinstance(node, ast.AnnAssign)
-            and isinstance(node.target, ast.Name)
-            and node.target.id == "codex_bin"
-        ),
-        None,
-    )
-    assert codex_bin_field is not None
-    assert isinstance(codex_bin_field.value, ast.Call)
-    assert isinstance(codex_bin_field.value.func, ast.Name)
-    assert codex_bin_field.value.func.id == "str"
-    assert len(codex_bin_field.value.args) == 1
-    bundled_call = codex_bin_field.value.args[0]
-    assert isinstance(bundled_call, ast.Call)
-    assert isinstance(bundled_call.func, ast.Name)
-    assert bundled_call.func.id == "_bundled_codex_path"
-
     bin_root = (ROOT / "src" / "codex_app_server" / "bin").resolve()
+    default_bin = Path(AppServerConfig().codex_bin).resolve()
 
     sys_name = platform.system().lower()
     machine = platform.machine().lower()
@@ -113,4 +76,5 @@ def test_default_runtime_uses_current_platform_bundled_binary() -> None:
         raise AssertionError(f"Unsupported platform in test: {sys_name}/{machine}")
 
     expected = (bin_root / platform_dir / exe).resolve()
-    assert expected.is_file()
+    assert default_bin == expected
+    assert default_bin.is_file()
