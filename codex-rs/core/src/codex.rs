@@ -155,6 +155,10 @@ use uuid::Uuid;
 use crate::ModelProviderInfo;
 use crate::client::ModelClient;
 use crate::client::ModelClientSession;
+use crate::hybrid_router::HybridRouter;
+use crate::hybrid_router::HybridRouterConfig;
+use crate::hybrid_router::RoutingDecision;
+use crate::model_provider_info::built_in_model_providers;
 use crate::client_common::Prompt;
 use crate::client_common::ResponseEvent;
 use crate::codex_thread::ThreadConfigSnapshot;
@@ -1791,6 +1795,44 @@ impl Session {
             code_mode_service: crate::tools::code_mode::CodeModeService::new(
                 config.js_repl_node_path.clone(),
             ),
+            // ─── Hybrid Mode ──────────────────────────────────────────────────────────
+            supervisor_client: if config.hybrid_mode {
+                // Build a supervisor ModelClient pointing at the OpenAI provider.
+                let supervisor_provider = {
+                    let all_providers = built_in_model_providers();
+                    config
+                        .model_providers
+                        .get(&config.hybrid_supervisor_provider_id)
+                        .cloned()
+                        .or_else(|| all_providers.get(&config.hybrid_supervisor_provider_id).cloned())
+                        .unwrap_or_else(ModelProviderInfo::create_openai_provider)
+                };
+                Some(ModelClient::new(
+                    Some(Arc::clone(&auth_manager)),
+                    conversation_id,
+                    supervisor_provider,
+                    session_configuration.session_source.clone(),
+                    config.model_verbosity,
+                    ws_version_from_features(config.as_ref()),
+                    config.features.enabled(Feature::EnableRequestCompression),
+                    config.features.enabled(Feature::RuntimeMetrics),
+                    Self::build_model_client_beta_features_header(config.as_ref()),
+                ))
+            } else {
+                None
+            },
+            hybrid_router: if config.hybrid_mode {
+                Some(HybridRouter::new(HybridRouterConfig {
+                    escalation_threshold: config.hybrid_escalation_threshold,
+                    local_model: config
+                        .model
+                        .clone()
+                        .unwrap_or_else(|| "local (vLLM)".to_string()),
+                    supervisor_model: config.hybrid_supervisor_model.clone(),
+                }))
+            } else {
+                None
+            },
         };
         let js_repl = Arc::new(JsReplHandle::with_node_path(
             config.js_repl_node_path.clone(),
@@ -5663,8 +5705,53 @@ pub(crate) async fn run_turn(
 
     // `ModelClientSession` is turn-scoped and caches WebSocket + sticky routing state, so we reuse
     // one instance across retries within this turn.
-    let mut client_session =
-        prewarmed_client_session.unwrap_or_else(|| sess.services.model_client.new_session());
+    //
+    // ─── Hybrid Mode: choose local or supervisor client ───────────────────────────────────────────
+    // When hybrid mode is active, classify the current prompt and route to
+    // either the local vLLM client or the remote OpenAI supervisor client.
+    let mut client_session = if let Some(ref router) = sess.services.hybrid_router {
+        // Extract the latest user message text for classification.
+        let prompt_text: String = {
+            let history = sess.clone_history().await;
+            history
+                .items()
+                .iter()
+                .rev()
+                .find_map(|item| match parse_turn_item(item) {
+                    Some(TurnItem::UserMessage(msg)) => Some(msg.message()),
+                    _ => None,
+                })
+                .unwrap_or_default()
+        };
+        let history_len = sess.clone_history().await.raw_items().len();
+        let routing_decision = router.route(&prompt_text, history_len);
+        match routing_decision {
+            RoutingDecision::Supervisor { ref reason } => {
+                // Notify the user that we are escalating this turn.
+                sess.send_event(
+                    &turn_context,
+                    EventMsg::Warning(WarningEvent {
+                        message: format!("⚡ Hybrid Mode: {reason}"),
+                    }),
+                )
+                .await;
+                // Use the supervisor client if available, otherwise fall back
+                // to the regular local client.
+                if let Some(ref supervisor) = sess.services.supervisor_client {
+                    supervisor.new_session()
+                } else {
+                    prewarmed_client_session
+                        .unwrap_or_else(|| sess.services.model_client.new_session())
+                }
+            }
+            RoutingDecision::Local => {
+                prewarmed_client_session
+                    .unwrap_or_else(|| sess.services.model_client.new_session())
+            }
+        }
+    } else {
+        prewarmed_client_session.unwrap_or_else(|| sess.services.model_client.new_session())
+    };
 
     loop {
         if let Some(session_start_source) = sess.take_pending_session_start_source().await {

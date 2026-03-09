@@ -457,6 +457,10 @@ pub async fn run_main(
         main_execve_wrapper_exe: arg0_paths.main_execve_wrapper_exe.clone(),
         show_raw_agent_reasoning: cli.oss.then_some(true),
         additional_writable_roots: additional_dirs,
+        // ─── Hybrid Mode CLI overrides ──────────────────────────────────────────────────────────
+        hybrid_mode: cli.hybrid.then_some(true),
+        hybrid_supervisor_model: cli.supervisor_model.clone(),
+        hybrid_escalation_threshold: cli.escalation_threshold,
         ..Default::default()
     };
 

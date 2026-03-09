@@ -9,6 +9,7 @@ use crate::client::ModelClient;
 use crate::config::StartedNetworkProxy;
 use crate::exec_policy::ExecPolicyManager;
 use crate::file_watcher::FileWatcher;
+use crate::hybrid_router::HybridRouter;
 use crate::mcp::McpManager;
 use crate::mcp_connection_manager::McpConnectionManager;
 use crate::models_manager::manager::ModelsManager;
@@ -59,6 +60,16 @@ pub(crate) struct SessionServices {
     pub(crate) network_approval: Arc<NetworkApprovalService>,
     pub(crate) state_db: Option<StateDbHandle>,
     /// Session-scoped model client shared across turns.
+    /// In hybrid mode this is the **local** client (vLLM on DGX Spark).
     pub(crate) model_client: ModelClient,
     pub(crate) code_mode_service: CodeModeService,
+    /// Optional supervisor model client used in hybrid mode.
+    ///
+    /// When `Some`, the [`HybridRouter`] may redirect complex turns to this
+    /// client (backed by an OpenAI model) while routine turns use
+    /// `model_client`.  `None` when hybrid mode is disabled.
+    pub(crate) supervisor_client: Option<ModelClient>,
+    /// Hybrid router that classifies turn complexity and decides which client
+    /// to use.  `None` when hybrid mode is disabled.
+    pub(crate) hybrid_router: Option<HybridRouter>,
 }

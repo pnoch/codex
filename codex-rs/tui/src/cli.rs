@@ -110,6 +110,20 @@ pub struct Cli {
     #[arg(long = "no-alt-screen", default_value_t = false)]
     pub no_alt_screen: bool,
 
+    /// Enable hybrid mode: route routine tasks to the local vLLM model (DGX Spark) and
+    /// escalate complex tasks to the remote OpenAI supervisor model.
+    /// Requires --oss or a local provider to be configured.
+    #[arg(long = "hybrid", default_value_t = false)]
+    pub hybrid: bool,
+
+    /// Override the supervisor model used in hybrid mode (default: gpt-5.3-codex).
+    #[arg(long = "supervisor-model", value_name = "MODEL")]
+    pub supervisor_model: Option<String>,
+
+    /// Complexity threshold for hybrid mode escalation, 0.0-1.0 (default: 0.65).
+    #[arg(long = "escalation-threshold", value_name = "THRESHOLD")]
+    pub escalation_threshold: Option<f32>,
+
     #[clap(skip)]
     pub config_overrides: CliConfigOverrides,
 }

@@ -561,6 +561,24 @@ pub struct Config {
 
     /// OTEL configuration (exporter type, endpoint, headers, etc.).
     pub otel: crate::config::types::OtelConfig,
+
+    // ─── Hybrid Mode ──────────────────────────────────────────────────────────
+
+    /// When `true`, hybrid mode is active: routine turns are handled by the
+    /// local model (vLLM on DGX Spark) and complex turns are escalated to the
+    /// remote supervisor model.  Defaults to `false`.
+    pub hybrid_mode: bool,
+
+    /// The supervisor (remote) model to use when hybrid mode is active and the
+    /// turn is classified as complex.  Defaults to `"gpt-5.3-codex"`.
+    pub hybrid_supervisor_model: String,
+
+    /// The provider ID for the supervisor model.  Defaults to `"openai"`.
+    pub hybrid_supervisor_provider_id: String,
+
+    /// Complexity score threshold (0.0 – 1.0) above which turns are escalated
+    /// to the supervisor model.  Defaults to `0.65`.
+    pub hybrid_escalation_threshold: f32,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1466,6 +1484,22 @@ pub struct ConfigToml {
     pub experimental_use_freeform_apply_patch: Option<bool>,
     /// Preferred OSS provider for local models, e.g. "lmstudio" or "ollama".
     pub oss_provider: Option<String>,
+
+    // ─── Hybrid Mode ──────────────────────────────────────────────────────────
+    /// Enable hybrid routing: local vLLM for routine tasks, OpenAI supervisor
+    /// for complex tasks.  Defaults to `false`.
+    pub hybrid_mode: Option<bool>,
+
+    /// The remote supervisor model to use for complex turns in hybrid mode.
+    /// Defaults to `"gpt-5.3-codex"`.
+    pub hybrid_supervisor_model: Option<String>,
+
+    /// Provider ID for the supervisor model.  Defaults to `"openai"`.
+    pub hybrid_supervisor_provider_id: Option<String>,
+
+    /// Complexity threshold (0.0 – 1.0) above which a turn is escalated to the
+    /// supervisor model.  Defaults to `0.65`.
+    pub hybrid_escalation_threshold: Option<f32>,
 }
 
 impl From<ConfigToml> for UserSavedConfig {
@@ -1895,6 +1929,12 @@ pub struct ConfigOverrides {
     pub ephemeral: Option<bool>,
     /// Additional directories that should be treated as writable roots for this session.
     pub additional_writable_roots: Vec<PathBuf>,
+    /// Override for hybrid mode activation.
+    pub hybrid_mode: Option<bool>,
+    /// Override for the supervisor model in hybrid mode.
+    pub hybrid_supervisor_model: Option<String>,
+    /// Override for the complexity escalation threshold in hybrid mode.
+    pub hybrid_escalation_threshold: Option<f32>,
 }
 
 fn validate_reserved_model_provider_ids(
@@ -2092,6 +2132,9 @@ impl Config {
             tools_web_search_request: override_tools_web_search_request,
             ephemeral,
             additional_writable_roots,
+            hybrid_mode: hybrid_mode_override,
+            hybrid_supervisor_model: hybrid_supervisor_model_override,
+            hybrid_escalation_threshold: hybrid_escalation_threshold_override,
         } = overrides;
 
         let active_profile_name = config_profile_key
@@ -2768,6 +2811,19 @@ impl Config {
                     metrics_exporter,
                 }
             },
+            // ─── Hybrid Mode defaults ──────────────────────────────────────────────────────────
+            hybrid_mode: hybrid_mode_override
+                .or(cfg.hybrid_mode)
+                .unwrap_or(false),
+            hybrid_supervisor_model: hybrid_supervisor_model_override
+                .or(cfg.hybrid_supervisor_model)
+                .unwrap_or_else(|| "gpt-5.3-codex".to_string()),
+            hybrid_supervisor_provider_id: cfg
+                .hybrid_supervisor_provider_id
+                .unwrap_or_else(|| "openai".to_string()),
+            hybrid_escalation_threshold: hybrid_escalation_threshold_override
+                .or(cfg.hybrid_escalation_threshold)
+                .unwrap_or(0.65),
         };
         Ok(config)
     }
