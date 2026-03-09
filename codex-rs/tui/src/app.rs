@@ -3707,6 +3707,21 @@ impl App {
                     }
                 }
             }
+            // ─── Hybrid Mode ───────────────────────────────────────────────────────────────────────────
+            AppEvent::UpdateHybridMode(enabled) => {
+                self.config.hybrid_mode = enabled;
+            }
+            AppEvent::UpdateHybridSupervisor(model) => {
+                self.config.hybrid_supervisor_model = model;
+            }
+            AppEvent::UpdateHybridProvider(_provider) => {
+                // The local provider is set at startup via oss_provider config;
+                // the Op::UpdateHybridProvider is forwarded to the session's
+                // HybridRouter directly.  No app-level config field to update.
+            }
+            AppEvent::UpdateHybridThreshold(threshold) => {
+                self.config.hybrid_escalation_threshold = threshold;
+            }
         }
         Ok(AppRunControl::Continue)
     }

@@ -100,6 +100,35 @@ impl HybridRouter {
         }
     }
 
+    // ─── Runtime mutation (slash commands) ────────────────────────────────────
+
+    /// Set the escalation threshold at runtime (from `/threshold <value>`).
+    pub fn set_escalation_threshold(&mut self, threshold: f32) {
+        self.config.escalation_threshold = threshold.clamp(0.0, 1.0);
+    }
+
+    /// Set the supervisor model name at runtime (from `/supervisor <model>`).
+    pub fn set_supervisor_model(&mut self, model: String) {
+        self.config.supervisor_model = model;
+    }
+
+    /// Set the local model/provider label at runtime (from `/provider <name>`).
+    pub fn set_local_model(&mut self, model: String) {
+        self.config.local_model = model;
+    }
+
+    /// Return a snapshot of the current configuration.
+    pub fn config(&self) -> &HybridRouterConfig {
+        &self.config
+    }
+
+    /// Return the current consecutive failure count.
+    pub fn consecutive_failures(&self) -> u32 {
+        self.consecutive_local_failures.load(Ordering::Relaxed)
+    }
+
+    // ─── Core routing ────────────────────────────────────────────────────────
+
     /// Record that the local model succeeded on the last turn.
     pub fn record_local_success(&self) {
         self.consecutive_local_failures.store(0, Ordering::Relaxed);

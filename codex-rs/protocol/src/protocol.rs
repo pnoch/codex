@@ -490,6 +490,20 @@ pub enum Op {
 
     /// Request the list of available models.
     ListModels,
+
+    // ─── Hybrid Mode ───────────────────────────────────────────────────────────────────────────
+
+    /// Toggle hybrid mode on/off at runtime (from `/hybrid [on|off]`).
+    UpdateHybridMode { enabled: bool },
+
+    /// Update the supervisor model at runtime (from `/supervisor <model>`).
+    UpdateHybridSupervisor { model: String },
+
+    /// Update the local provider label at runtime (from `/provider <name>`).
+    UpdateHybridProvider { provider: String },
+
+    /// Update the escalation threshold at runtime (from `/threshold <value>`).
+    UpdateHybridThreshold { threshold: f32 },
 }
 
 impl Op {

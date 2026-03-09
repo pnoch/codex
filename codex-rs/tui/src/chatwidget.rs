@@ -4744,6 +4744,67 @@ impl ChatWidget {
                     });
                 self.bottom_pane.drain_pending_submission_state();
             }
+            // ─── Hybrid Mode Slash Commands ───────────────────────────────────────────────────────────────────────────
+            SlashCommand::Hybrid => {
+                let arg = trimmed.trim().to_lowercase();
+                let enabled = arg != "off" && arg != "false" && arg != "0";
+                self.submit_op(Op::UpdateHybridMode { enabled });
+                let status = if enabled { "enabled" } else { "disabled" };
+                self.add_info_message(format!(
+                    "⚡ Hybrid mode {status}. Local vLLM handles routine turns; OpenAI supervisor handles complex ones."
+                ), None);
+                self.bottom_pane.drain_pending_submission_state();
+            }
+            SlashCommand::Supervisor if !trimmed.is_empty() => {
+                let Some((model, _)) = self.bottom_pane.prepare_inline_args_submission(false)
+                else {
+                    return;
+                };
+                let model = model.trim().to_string();
+                self.submit_op(Op::UpdateHybridSupervisor { model: model.clone() });
+                self.add_info_message(format!(
+                    "⚡ Hybrid supervisor model set to: {model}"
+                ), None);
+                self.bottom_pane.drain_pending_submission_state();
+            }
+            SlashCommand::Provider if !trimmed.is_empty() => {
+                let Some((provider, _)) = self.bottom_pane.prepare_inline_args_submission(false)
+                else {
+                    return;
+                };
+                let provider = provider.trim().to_string();
+                self.submit_op(Op::UpdateHybridProvider { provider: provider.clone() });
+                self.add_info_message(format!(
+                    "⚡ Hybrid local provider set to: {provider}"
+                ), None);
+                self.bottom_pane.drain_pending_submission_state();
+            }
+            SlashCommand::Threshold if !trimmed.is_empty() => {
+                let Some((val_str, _)) = self.bottom_pane.prepare_inline_args_submission(false)
+                else {
+                    return;
+                };
+                match val_str.trim().parse::<f32>() {
+                    Ok(threshold) if (0.0_f32..=1.0_f32).contains(&threshold) => {
+                        self.submit_op(Op::UpdateHybridThreshold { threshold });
+                        self.add_info_message(format!(
+                            "⚡ Hybrid escalation threshold set to {threshold:.2}. Turns scoring above this go to the supervisor."
+                        ), None);
+                    }
+                    Ok(_) => {
+                        self.add_error_message(
+                            "Threshold must be between 0.0 and 1.0. Example: /threshold 0.65"
+                                .to_string(),
+                        );
+                    }
+                    Err(_) => {
+                        self.add_error_message(format!(
+                            "Invalid threshold value '{val_str}'. Must be a number between 0.0 and 1.0."
+                        ));
+                    }
+                }
+                self.bottom_pane.drain_pending_submission_state();
+            }
             _ => self.dispatch_command(cmd),
         }
     }

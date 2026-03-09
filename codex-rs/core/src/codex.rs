@@ -4381,6 +4381,40 @@ async fn submission_loop(sess: Arc<Session>, config: Arc<Config>, rx_sub: Receiv
                     handlers::review(&sess, &config, sub.id.clone(), review_request).await;
                     false
                 }
+                // ─── Hybrid Mode ───────────────────────────────────────────────────────────────────────────
+                Op::UpdateHybridMode { enabled } => {
+                    // When disabling, drop the hybrid_router so run_turn falls back to the
+                    // primary model_client.  When enabling, a router must already be
+                    // configured (i.e. --hybrid was passed at startup); we just un-hide it.
+                    if !enabled {
+                        sess.services.hybrid_router = None;
+                        tracing::info!("Hybrid mode disabled via /hybrid off");
+                    } else {
+                        tracing::info!("Hybrid mode enable requested via /hybrid on (router must be pre-configured)");
+                    }
+                    false
+                }
+                Op::UpdateHybridSupervisor { model } => {
+                    if let Some(router) = &mut sess.services.hybrid_router {
+                        router.set_supervisor_model(model.clone());
+                        tracing::info!(supervisor = %model, "Hybrid supervisor updated via /supervisor");
+                    }
+                    false
+                }
+                Op::UpdateHybridProvider { provider } => {
+                    if let Some(router) = &mut sess.services.hybrid_router {
+                        router.set_local_model(provider.clone());
+                        tracing::info!(provider = %provider, "Hybrid provider updated via /provider");
+                    }
+                    false
+                }
+                Op::UpdateHybridThreshold { threshold } => {
+                    if let Some(router) = &mut sess.services.hybrid_router {
+                        router.set_escalation_threshold(threshold);
+                        tracing::info!(threshold = threshold, "Hybrid threshold updated via /threshold");
+                    }
+                    false
+                }
                 _ => false, // Ignore unknown ops; enum is non_exhaustive to allow extensions.
             }
         }

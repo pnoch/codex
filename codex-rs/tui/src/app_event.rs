@@ -456,6 +456,20 @@ pub(crate) enum AppEvent {
     SyntaxThemeSelected {
         name: String,
     },
+
+    // ─── Hybrid Mode ───────────────────────────────────────────────────────────────────────────
+
+    /// Toggle hybrid mode on/off and update `config.hybrid_mode`.
+    UpdateHybridMode(bool),
+
+    /// Update the supervisor model used in hybrid mode.
+    UpdateHybridSupervisor(String),
+
+    /// Update the local provider label used in hybrid mode.
+    UpdateHybridProvider(String),
+
+    /// Update the escalation threshold used in hybrid mode.
+    UpdateHybridThreshold(f32),
 }
 
 /// The exit strategy requested by the UI layer.

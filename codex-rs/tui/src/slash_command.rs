@@ -14,6 +14,15 @@ pub enum SlashCommand {
     // more frequently used commands should be listed first.
     Model,
     Fast,
+    // ─── Hybrid Mode ──────────────────────────────────────────────────────────
+    /// Toggle hybrid mode on/off or show current status.
+    Hybrid,
+    /// Switch the local model provider (vllm, ollama, lmstudio).
+    Provider,
+    /// Set the remote supervisor model used for complex turns.
+    Supervisor,
+    /// Set the complexity escalation threshold (0.0–1.0).
+    Threshold,
     Approvals,
     Permissions,
     #[strum(serialize = "setup-default-sandbox")]
@@ -92,6 +101,18 @@ impl SlashCommand {
             SlashCommand::MemoryUpdate => "DO NOT USE",
             SlashCommand::Model => "choose what model and reasoning effort to use",
             SlashCommand::Fast => "toggle Fast mode to enable fastest inference at 2X plan usage",
+            SlashCommand::Hybrid => {
+                "toggle hybrid mode (local vLLM ⇄ OpenAI supervisor) or show status"
+            }
+            SlashCommand::Provider => {
+                "switch local model provider: /provider <vllm|ollama|lmstudio>"
+            }
+            SlashCommand::Supervisor => {
+                "set supervisor model for hybrid mode: /supervisor <model>"
+            }
+            SlashCommand::Threshold => {
+                "set hybrid escalation threshold 0.0–1.0: /threshold <value>"
+            }
             SlashCommand::Personality => "choose a communication style for Codex",
             SlashCommand::Realtime => "toggle realtime voice mode (experimental)",
             SlashCommand::Settings => "configure realtime microphone/speaker",
@@ -128,6 +149,10 @@ impl SlashCommand {
                 | SlashCommand::Plan
                 | SlashCommand::Fast
                 | SlashCommand::SandboxReadRoot
+                // Hybrid mode commands accept an optional argument
+                | SlashCommand::Provider
+                | SlashCommand::Supervisor
+                | SlashCommand::Threshold
         )
     }
 
@@ -168,6 +193,11 @@ impl SlashCommand {
             | SlashCommand::Feedback
             | SlashCommand::Quit
             | SlashCommand::Exit => true,
+            // Hybrid mode commands can always be run (they only mutate the router config)
+            SlashCommand::Hybrid
+            | SlashCommand::Provider
+            | SlashCommand::Supervisor
+            | SlashCommand::Threshold => true,
             SlashCommand::Rollout => true,
             SlashCommand::TestApproval => true,
             SlashCommand::Realtime => true,
