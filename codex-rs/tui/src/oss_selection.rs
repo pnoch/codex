@@ -3,8 +3,10 @@ use std::sync::LazyLock;
 
 use codex_core::DEFAULT_LMSTUDIO_PORT;
 use codex_core::DEFAULT_OLLAMA_PORT;
+use codex_core::DEFAULT_VLLM_PORT;
 use codex_core::LMSTUDIO_OSS_PROVIDER_ID;
 use codex_core::OLLAMA_OSS_PROVIDER_ID;
+use codex_core::VLLM_OSS_PROVIDER_ID;
 use codex_core::config::set_default_oss_provider;
 use crossterm::event::Event;
 use crossterm::event::KeyCode;
@@ -74,6 +76,12 @@ static OSS_SELECT_OPTIONS: LazyLock<Vec<SelectOption>> = LazyLock::new(|| {
             key: KeyCode::Char('o'),
             provider_id: OLLAMA_OSS_PROVIDER_ID,
         },
+        SelectOption {
+            label: Line::from(vec!["v".underlined(), "LLM (DGX Spark)".into()]),
+            description: "vLLM server on DGX Spark cluster (default port 8000)",
+            key: KeyCode::Char('v'),
+            provider_id: VLLM_OSS_PROVIDER_ID,
+        },
     ]
 });
 
@@ -92,7 +100,11 @@ pub struct OssSelectionWidget<'a> {
 }
 
 impl OssSelectionWidget<'_> {
-    fn new(lmstudio_status: ProviderStatus, ollama_status: ProviderStatus) -> io::Result<Self> {
+    fn new(
+        lmstudio_status: ProviderStatus,
+        ollama_status: ProviderStatus,
+        vllm_status: ProviderStatus,
+    ) -> io::Result<Self> {
         let providers = vec![
             ProviderOption {
                 name: "LM Studio".to_string(),
@@ -105,6 +117,10 @@ impl OssSelectionWidget<'_> {
             ProviderOption {
                 name: "Ollama (Chat)".to_string(),
                 status: ollama_status,
+            },
+            ProviderOption {
+                name: "vLLM (DGX Spark)".to_string(),
+                status: vllm_status,
             },
         ];
 
@@ -291,23 +307,31 @@ pub async fn select_oss_provider(codex_home: &std::path::Path) -> io::Result<Str
     // Check provider statuses first
     let lmstudio_status = check_lmstudio_status().await;
     let ollama_status = check_ollama_status().await;
+    let vllm_status = check_vllm_status().await;
 
     // Autoselect if only one is running
-    match (&lmstudio_status, &ollama_status) {
-        (ProviderStatus::Running, ProviderStatus::NotRunning) => {
-            let provider = LMSTUDIO_OSS_PROVIDER_ID.to_string();
-            return Ok(provider);
+    let lmstudio_running = matches!(lmstudio_status, ProviderStatus::Running);
+    let ollama_running = matches!(ollama_status, ProviderStatus::Running);
+    let vllm_running = matches!(vllm_status, ProviderStatus::Running);
+
+    let running_count = [lmstudio_running, ollama_running, vllm_running]
+        .iter()
+        .filter(|&&r| r)
+        .count();
+
+    if running_count == 1 {
+        if lmstudio_running {
+            return Ok(LMSTUDIO_OSS_PROVIDER_ID.to_string());
         }
-        (ProviderStatus::NotRunning, ProviderStatus::Running) => {
-            let provider = OLLAMA_OSS_PROVIDER_ID.to_string();
-            return Ok(provider);
+        if ollama_running {
+            return Ok(OLLAMA_OSS_PROVIDER_ID.to_string());
         }
-        _ => {
-            // Both running or both not running - show UI
+        if vllm_running {
+            return Ok(VLLM_OSS_PROVIDER_ID.to_string());
         }
     }
 
-    let mut widget = OssSelectionWidget::new(lmstudio_status, ollama_status)?;
+    let mut widget = OssSelectionWidget::new(lmstudio_status, ollama_status, vllm_status)?;
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -355,6 +379,33 @@ async fn check_ollama_status() -> ProviderStatus {
         Ok(true) => ProviderStatus::Running,
         Ok(false) => ProviderStatus::NotRunning,
         Err(_) => ProviderStatus::Unknown,
+    }
+}
+
+async fn check_vllm_status() -> ProviderStatus {
+    // Check the CODEX_VLLM_BASE_URL if set, otherwise probe the default port.
+    let url = std::env::var("CODEX_VLLM_BASE_URL")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| format!("http://192.168.100.10:{DEFAULT_VLLM_PORT}/v1/models"));
+
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_secs(3))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return ProviderStatus::Unknown,
+    };
+
+    match client.get(&url).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                ProviderStatus::Running
+            } else {
+                ProviderStatus::NotRunning
+            }
+        }
+        Err(_) => ProviderStatus::NotRunning,
     }
 }
 
