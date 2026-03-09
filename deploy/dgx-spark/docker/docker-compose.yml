@@ -1,0 +1,97 @@
+# Docker Compose configuration for running vLLM on a 4-unit DGX Spark cluster.
+#
+# This file should be deployed to the PRIMARY node (spark-1 at 192.168.100.10).
+# The other three nodes are managed via the cluster deployment script.
+#
+# Usage:
+#   1. Run the model pre-download step first:
+#      ./scripts/download-model.sh
+#
+#   2. Start the vLLM service:
+#      docker compose -f docker/docker-compose.yml up -d
+#
+# Environment variables (set in .env or export before running):
+#   MODEL_ID          - Hugging Face model ID (default: meta-llama/Meta-Llama-3-70B-Instruct)
+#   MODEL_STORE       - Host path for persistent model storage (default: /mnt/models)
+#   TENSOR_PARALLEL   - Number of GPUs for tensor parallelism (default: 4 for 4-unit cluster)
+#   HF_TOKEN          - Hugging Face Hub token (required for gated models like Llama 3)
+#   VLLM_PORT         - Port to expose the vLLM API (default: 8000)
+
+version: "3.9"
+
+services:
+  vllm:
+    image: nvcr.io/nvidia/vllm:latest
+    container_name: codex-vllm
+    restart: unless-stopped
+
+    # Expose the OpenAI-compatible API on the configured port.
+    ports:
+      - "${VLLM_PORT:-8000}:8000"
+
+    # Mount the persistent model store from the host to prevent redundant downloads.
+    volumes:
+      - "${MODEL_STORE:-/mnt/models}:/models:ro"
+
+    # GPU access — use all available GPUs on this DGX Spark unit.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+    environment:
+      # Model configuration
+      - MODEL_ID=${MODEL_ID:-meta-llama/Meta-Llama-3-70B-Instruct}
+
+      # Performance optimization: disable telemetry and force offline mode
+      # after the model has been pre-downloaded to /mnt/models.
+      - VLLM_NO_USAGE_STATS=1
+      - HF_HUB_OFFLINE=1
+
+      # Point Hugging Face to the host-mounted model store.
+      - HF_HOME=/models
+
+      # Optional: Hugging Face token for gated models (only needed during download).
+      - HF_TOKEN=${HF_TOKEN:-}
+
+      # NCCL settings for multi-node tensor parallelism.
+      - NCCL_DEBUG=WARN
+      - NCCL_IB_DISABLE=0
+      - NCCL_NET_GDR_LEVEL=5
+
+    # vLLM startup command with DGX Spark-optimized settings.
+    command: >
+      python3 -m vllm.entrypoints.openai.api_server
+        --model /models/${MODEL_ID:-meta-llama--Meta-Llama-3-70B-Instruct}
+        --tensor-parallel-size ${TENSOR_PARALLEL:-4}
+        --max-model-len ${MAX_MODEL_LEN:-32768}
+        --gpu-memory-utilization ${GPU_MEMORY_UTIL:-0.90}
+        --host 0.0.0.0
+        --port 8000
+        --served-model-name "${MODEL_ID:-meta-llama/Meta-Llama-3-70B-Instruct}"
+        --enable-prefix-caching
+        --trust-remote-code
+
+    # Health check — wait for the model to fully load before marking healthy.
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 30
+      start_period: 300s
+
+    # Shared memory required for NCCL collective operations.
+    shm_size: "16gb"
+
+    # Use host networking for optimal NCCL performance across DGX Spark units.
+    network_mode: host
+
+    # Logging configuration.
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"

@@ -268,9 +268,13 @@ impl ModelProviderInfo {
 
 pub const DEFAULT_LMSTUDIO_PORT: u16 = 1234;
 pub const DEFAULT_OLLAMA_PORT: u16 = 11434;
+/// Default port that vLLM listens on (matches the vLLM default).
+pub const DEFAULT_VLLM_PORT: u16 = 8000;
 
 pub const LMSTUDIO_OSS_PROVIDER_ID: &str = "lmstudio";
 pub const OLLAMA_OSS_PROVIDER_ID: &str = "ollama";
+/// Provider ID for vLLM running on a DGX Spark cluster.
+pub const VLLM_OSS_PROVIDER_ID: &str = "vllm";
 
 /// Built-in default provider list.
 pub fn built_in_model_providers(
@@ -293,10 +297,43 @@ pub fn built_in_model_providers(
             LMSTUDIO_OSS_PROVIDER_ID,
             create_oss_provider(DEFAULT_LMSTUDIO_PORT, WireApi::Responses),
         ),
+        (
+            VLLM_OSS_PROVIDER_ID,
+            create_vllm_provider(),
+        ),
     ]
     .into_iter()
     .map(|(k, v)| (k.to_string(), v))
     .collect()
+}
+
+/// Create the built-in vLLM provider for DGX Spark clusters.
+///
+/// The base URL is resolved from `CODEX_VLLM_BASE_URL` or defaults to
+/// `http://192.168.100.10:8000/v1` (the primary DGX Spark node on the
+/// standard NVIDIA cluster subnet).
+pub fn create_vllm_provider() -> ModelProviderInfo {
+    let base_url = std::env::var("CODEX_VLLM_BASE_URL")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| format!("http://192.168.100.10:{DEFAULT_VLLM_PORT}/v1"));
+    ModelProviderInfo {
+        name: "vLLM (DGX Spark)".into(),
+        base_url: Some(base_url),
+        env_key: None,
+        env_key_instructions: None,
+        experimental_bearer_token: None,
+        wire_api: WireApi::Responses,
+        query_params: None,
+        http_headers: None,
+        env_http_headers: None,
+        // Generous retry/timeout settings for large model inference on DGX Spark.
+        request_max_retries: Some(3),
+        stream_max_retries: Some(3),
+        stream_idle_timeout_ms: Some(120_000),
+        requires_openai_auth: false,
+        supports_websockets: false,
+    }
 }
 
 pub fn create_oss_provider(default_provider_port: u16, wire_api: WireApi) -> ModelProviderInfo {

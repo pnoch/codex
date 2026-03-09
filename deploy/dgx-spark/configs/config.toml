@@ -1,0 +1,62 @@
+# ~/.codex/config.toml — Codex configuration for DGX Spark + vLLM
+#
+# Copy this file to ~/.codex/config.toml (or merge with your existing config).
+# Then set the required environment variables before running `codex --oss`.
+#
+# Required environment variables:
+#   CODEX_VLLM_BASE_URL  - Base URL of your vLLM server (single node)
+#   OR
+#   CODEX_VLLM_CLUSTER_NODES - JSON array of cluster nodes (multi-node)
+#
+# Optional environment variables:
+#   HF_TOKEN             - Hugging Face Hub token (for gated models)
+#   CODEX_VLLM_MODEL_STORE - Host path for persistent model storage
+
+# ─── Default Profile: vLLM on DGX Spark ──────────────────────────────────────
+
+[profile.default]
+# Use the vLLM provider for all requests.
+oss_provider = "vllm"
+
+# Model to use. This should match the model served by your vLLM instance.
+# Recommended coding models for DGX Spark:
+#   - meta-llama/Meta-Llama-3-70B-Instruct   (general purpose, excellent coding)
+#   - deepseek-ai/DeepSeek-Coder-V2-Instruct  (specialized code generation)
+#   - Qwen/Qwen2.5-Coder-72B-Instruct         (state-of-the-art code model)
+model = "meta-llama/Meta-Llama-3-70B-Instruct"
+
+# Disable OpenAI authentication — vLLM does not require an API key.
+# (The vLLM provider already sets requires_openai_auth = false.)
+
+# ─── vLLM Provider Configuration ─────────────────────────────────────────────
+#
+# The built-in "vllm" provider reads CODEX_VLLM_BASE_URL from the environment.
+# For advanced configuration, you can override the provider here:
+#
+# [model_providers.vllm]
+# name = "vLLM (DGX Spark)"
+# base_url = "http://192.168.100.10:8000/v1"
+# wire_api = "responses"
+# request_max_retries = 3
+# stream_max_retries = 3
+# stream_idle_timeout_ms = 120000
+
+# ─── Alternative Profile: OpenAI Fallback ─────────────────────────────────────
+#
+# Use this profile when the DGX Spark cluster is unavailable.
+# Switch profiles with: codex --profile openai-fallback
+#
+# [profile.openai-fallback]
+# model = "o4-mini"
+
+# ─── Alternative Profile: DeepSeek Coder ─────────────────────────────────────
+#
+# [profile.deepseek-coder]
+# oss_provider = "vllm"
+# model = "deepseek-ai/DeepSeek-Coder-V2-Instruct"
+
+# ─── Alternative Profile: Qwen Coder ─────────────────────────────────────────
+#
+# [profile.qwen-coder]
+# oss_provider = "vllm"
+# model = "Qwen/Qwen2.5-Coder-72B-Instruct"

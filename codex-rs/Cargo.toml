@@ -35,6 +35,7 @@ members = [
     "mcp-server",
     "network-proxy",
     "ollama",
+    "vllm",
     "process-hardening",
     "protocol",
     "rmcp-client",
@@ -116,6 +117,7 @@ codex-login = { path = "login" }
 codex-mcp-server = { path = "mcp-server" }
 codex-network-proxy = { path = "network-proxy" }
 codex-ollama = { path = "ollama" }
+codex-vllm = { path = "vllm" }
 codex-otel = { path = "otel" }
 codex-process-hardening = { path = "process-hardening" }
 codex-protocol = { path = "protocol" }
