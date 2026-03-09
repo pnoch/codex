@@ -77,6 +77,7 @@ use crate::event_processor::EventProcessor;
 use codex_core::default_client::set_default_client_residency_requirement;
 use codex_core::default_client::set_default_originator;
 use codex_core::find_or_unarchive_thread_path_by_id_str;
+use codex_core::find_thread_path_by_id_str;
 use codex_core::find_thread_path_by_name_str;
 
 const DEFAULT_ANALYTICS_ENABLED: bool = true;
@@ -105,6 +106,7 @@ struct ExecRunArgs {
     cursor_ansi: bool,
     dangerously_bypass_approvals_and_sandbox: bool,
     exec_span: tracing::Span,
+    fork_session_id: Option<String>,
     images: Vec<PathBuf>,
     json_mode: bool,
     last_message_file: Option<PathBuf>,
@@ -132,6 +134,7 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
 
     let Cli {
         command,
+        fork_session_id,
         images,
         model: model_cli_arg,
         oss,
@@ -388,6 +391,7 @@ pub async fn run_main(cli: Cli, arg0_paths: Arg0DispatchPaths) -> anyhow::Result
         cursor_ansi,
         dangerously_bypass_approvals_and_sandbox,
         exec_span: exec_span.clone(),
+        fork_session_id,
         images,
         json_mode,
         last_message_file,
@@ -409,6 +413,7 @@ async fn run_exec_session(args: ExecRunArgs) -> anyhow::Result<()> {
         cursor_ansi,
         dangerously_bypass_approvals_and_sandbox,
         exec_span,
+        fork_session_id,
         images,
         json_mode,
         last_message_file,
@@ -496,18 +501,28 @@ async fn run_exec_session(args: ExecRunArgs) -> anyhow::Result<()> {
         thread_id: primary_thread_id,
         thread,
         session_configured,
-    } = if let Some(ExecCommand::Resume(args)) = command.as_ref() {
-        let resume_path = resolve_resume_path(&config, args).await?;
+    } = match command.as_ref() {
+        Some(ExecCommand::Resume(args)) => {
+            let resume_path = resolve_resume_path(&config, args).await?;
 
-        if let Some(path) = resume_path {
-            thread_manager
-                .resume_thread_from_rollout(config.clone(), path, auth_manager.clone())
-                .await?
-        } else {
-            thread_manager.start_thread(config.clone()).await?
+            if let Some(path) = resume_path {
+                thread_manager
+                    .resume_thread_from_rollout(config.clone(), path, auth_manager.clone())
+                    .await?
+            } else {
+                thread_manager.start_thread(config.clone()).await?
+            }
         }
-    } else {
-        thread_manager.start_thread(config.clone()).await?
+        Some(ExecCommand::Review(_)) | None => {
+            if let Some(session_id) = fork_session_id.as_deref() {
+                let fork_path = resolve_fork_path(&config, session_id).await?;
+                thread_manager
+                    .fork_thread(usize::MAX, config.clone(), fork_path, false)
+                    .await?
+            } else {
+                thread_manager.start_thread(config.clone()).await?
+            }
+        }
     };
     let primary_thread_id_for_span = primary_thread_id.to_string();
     exec_span.record("thread.id", primary_thread_id_for_span.as_str());
@@ -839,6 +854,27 @@ async fn resolve_resume_path(
         }
     } else {
         Ok(None)
+    }
+}
+
+async fn resolve_fork_path(config: &Config, session_id: &str) -> anyhow::Result<PathBuf> {
+    resolve_thread_path_by_id_or_name(config, session_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("No saved session found with ID {session_id}"))
+}
+
+async fn resolve_thread_path_by_id_or_name(
+    config: &Config,
+    id_or_name: &str,
+) -> anyhow::Result<Option<PathBuf>> {
+    if Uuid::parse_str(id_or_name).is_ok() {
+        find_thread_path_by_id_str(&config.codex_home, id_or_name)
+            .await
+            .map_err(anyhow::Error::from)
+    } else {
+        find_thread_path_by_name_str(&config.codex_home, id_or_name)
+            .await
+            .map_err(anyhow::Error::from)
     }
 }
 
