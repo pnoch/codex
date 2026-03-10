@@ -4620,6 +4620,35 @@ impl ChatWidget {
                     }),
                 }));
             }
+            // ─── Hybrid Mode (no-arg versions) ────────────────────────────────────────
+            // These are handled by dispatch_command_with_args when args are provided.
+            // Without args, show current status.
+            SlashCommand::Hybrid => {
+                self.app_event_tx
+                    .send(AppEvent::UpdateHybridMode(true));
+                self.add_info_message(
+                    "⚡ Hybrid mode enabled. Use `/hybrid off` to disable.".to_string(),
+                    Some("Local vLLM handles routine turns; OpenAI supervisor handles complex ones.".to_string()),
+                );
+            }
+            SlashCommand::Supervisor => {
+                self.add_info_message(
+                    "Usage: `/supervisor <model-name>`".to_string(),
+                    Some("Example: `/supervisor gpt-5.3-codex`".to_string()),
+                );
+            }
+            SlashCommand::Provider => {
+                self.add_info_message(
+                    "Usage: `/provider <provider-name>`".to_string(),
+                    Some("Example: `/provider vllm`".to_string()),
+                );
+            }
+            SlashCommand::Threshold => {
+                self.add_info_message(
+                    "Usage: `/threshold <0.0-1.0>`".to_string(),
+                    Some("Example: `/threshold 0.55` — lower values escalate more turns to the supervisor.".to_string()),
+                );
+            }
         }
     }
 

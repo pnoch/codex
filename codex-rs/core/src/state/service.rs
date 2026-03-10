@@ -68,8 +68,13 @@ pub(crate) struct SessionServices {
     /// When `Some`, the [`HybridRouter`] may redirect complex turns to this
     /// client (backed by an OpenAI model) while routine turns use
     /// `model_client`.  `None` when hybrid mode is disabled.
-    pub(crate) supervisor_client: Option<ModelClient>,
+    ///
+    /// Wrapped in `Mutex` so it can be mutated through `Arc<Session>`.
+    pub(crate) supervisor_client: Mutex<Option<ModelClient>>,
     /// Hybrid router that classifies turn complexity and decides which client
     /// to use.  `None` when hybrid mode is disabled.
-    pub(crate) hybrid_router: Option<HybridRouter>,
+    ///
+    /// Wrapped in `Mutex` so it can be mutated through `Arc<Session>` from
+    /// the Op dispatch loop.
+    pub(crate) hybrid_router: Mutex<Option<HybridRouter>>,
 }

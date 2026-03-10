@@ -30,7 +30,6 @@ use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use codex_protocol::ResponseItem;
 use serde::Deserialize;
 use serde::Serialize;
 

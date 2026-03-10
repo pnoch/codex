@@ -58,7 +58,7 @@ impl ClusterNode {
 }
 
 /// HTTP client for a single vLLM server node.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct VllmClient {
     /// Base URL including the `/v1` path prefix, e.g. `http://192.168.100.10:8000/v1`.
     pub(crate) base_url: String,

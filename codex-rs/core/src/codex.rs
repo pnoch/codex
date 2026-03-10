@@ -1796,7 +1796,7 @@ impl Session {
                 config.js_repl_node_path.clone(),
             ),
             // ─── Hybrid Mode ──────────────────────────────────────────────────────────
-            supervisor_client: if config.hybrid_mode {
+            supervisor_client: Mutex::new(if config.hybrid_mode {
                 // Build a supervisor ModelClient pointing at the OpenAI provider.
                 let supervisor_provider = {
                     let all_providers = built_in_model_providers();
@@ -1820,8 +1820,8 @@ impl Session {
                 ))
             } else {
                 None
-            },
-            hybrid_router: if config.hybrid_mode {
+            }),
+            hybrid_router: Mutex::new(if config.hybrid_mode {
                 Some(HybridRouter::new(HybridRouterConfig {
                     escalation_threshold: config.hybrid_escalation_threshold,
                     local_model: config
@@ -1832,7 +1832,7 @@ impl Session {
                 }))
             } else {
                 None
-            },
+            }),
         };
         let js_repl = Arc::new(JsReplHandle::with_node_path(
             config.js_repl_node_path.clone(),
@@ -4383,11 +4383,11 @@ async fn submission_loop(sess: Arc<Session>, config: Arc<Config>, rx_sub: Receiv
                 }
                 // ─── Hybrid Mode ───────────────────────────────────────────────────────────────────────────
                 Op::UpdateHybridMode { enabled } => {
-                    // When disabling, drop the hybrid_router so run_turn falls back to the
+                    // When disabling, clear the hybrid_router so run_turn falls back to the
                     // primary model_client.  When enabling, a router must already be
                     // configured (i.e. --hybrid was passed at startup); we just un-hide it.
                     if !enabled {
-                        sess.services.hybrid_router = None;
+                        *sess.services.hybrid_router.lock().await = None;
                         tracing::info!("Hybrid mode disabled via /hybrid off");
                     } else {
                         tracing::info!("Hybrid mode enable requested via /hybrid on (router must be pre-configured)");
@@ -4395,21 +4395,21 @@ async fn submission_loop(sess: Arc<Session>, config: Arc<Config>, rx_sub: Receiv
                     false
                 }
                 Op::UpdateHybridSupervisor { model } => {
-                    if let Some(router) = &mut sess.services.hybrid_router {
+                    if let Some(router) = sess.services.hybrid_router.lock().await.as_mut() {
                         router.set_supervisor_model(model.clone());
                         tracing::info!(supervisor = %model, "Hybrid supervisor updated via /supervisor");
                     }
                     false
                 }
                 Op::UpdateHybridProvider { provider } => {
-                    if let Some(router) = &mut sess.services.hybrid_router {
+                    if let Some(router) = sess.services.hybrid_router.lock().await.as_mut() {
                         router.set_local_model(provider.clone());
                         tracing::info!(provider = %provider, "Hybrid provider updated via /provider");
                     }
                     false
                 }
                 Op::UpdateHybridThreshold { threshold } => {
-                    if let Some(router) = &mut sess.services.hybrid_router {
+                    if let Some(router) = sess.services.hybrid_router.lock().await.as_mut() {
                         router.set_escalation_threshold(threshold);
                         tracing::info!(threshold = threshold, "Hybrid threshold updated via /threshold");
                     }
@@ -5743,24 +5743,32 @@ pub(crate) async fn run_turn(
     // ─── Hybrid Mode: choose local or supervisor client ───────────────────────────────────────────
     // When hybrid mode is active, classify the current prompt and route to
     // either the local vLLM client or the remote OpenAI supervisor client.
-    let mut client_session = if let Some(ref router) = sess.services.hybrid_router {
-        // Extract the latest user message text for classification.
-        let prompt_text: String = {
-            let history = sess.clone_history().await;
-            history
-                .items()
-                .iter()
-                .rev()
-                .find_map(|item| match parse_turn_item(item) {
-                    Some(TurnItem::UserMessage(msg)) => Some(msg.message()),
-                    _ => None,
-                })
-                .unwrap_or_default()
+    let mut client_session = {
+        // Lock the hybrid_router Mutex briefly to read the routing decision.
+        let routing_decision_opt = {
+            let router_guard = sess.services.hybrid_router.lock().await;
+            if let Some(ref router) = *router_guard {
+                // Extract the latest user message text for classification.
+                let prompt_text: String = {
+                    let history = sess.clone_history().await;
+                    history
+                        .raw_items()
+                        .iter()
+                        .rev()
+                        .find_map(|item| match parse_turn_item(item) {
+                            Some(TurnItem::UserMessage(msg)) => Some(msg.message()),
+                            _ => None,
+                        })
+                        .unwrap_or_default()
+                };
+                let history_len = sess.clone_history().await.raw_items().len();
+                Some(router.route(&prompt_text, history_len))
+            } else {
+                None
+            }
         };
-        let history_len = sess.clone_history().await.raw_items().len();
-        let routing_decision = router.route(&prompt_text, history_len);
-        match routing_decision {
-            RoutingDecision::Supervisor { ref reason } => {
+        match routing_decision_opt {
+            Some(RoutingDecision::Supervisor { ref reason }) => {
                 // Notify the user that we are escalating this turn.
                 sess.send_event(
                     &turn_context,
@@ -5771,20 +5779,19 @@ pub(crate) async fn run_turn(
                 .await;
                 // Use the supervisor client if available, otherwise fall back
                 // to the regular local client.
-                if let Some(ref supervisor) = sess.services.supervisor_client {
+                let supervisor_guard = sess.services.supervisor_client.lock().await;
+                if let Some(ref supervisor) = *supervisor_guard {
                     supervisor.new_session()
                 } else {
                     prewarmed_client_session
                         .unwrap_or_else(|| sess.services.model_client.new_session())
                 }
             }
-            RoutingDecision::Local => {
+            Some(RoutingDecision::Local) | None => {
                 prewarmed_client_session
                     .unwrap_or_else(|| sess.services.model_client.new_session())
             }
         }
-    } else {
-        prewarmed_client_session.unwrap_or_else(|| sess.services.model_client.new_session())
     };
 
     loop {
