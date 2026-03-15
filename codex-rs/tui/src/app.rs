@@ -2202,6 +2202,32 @@ impl App {
             }
         }
 
+        // ── Developer rate-limit bypass warning ─────────────────────────────
+        // If CODEX_BYPASS_RATE_LIMIT is set, show a prominent warning at
+        // startup so developers don't accidentally leave it on in production.
+        if std::env::var("CODEX_BYPASS_RATE_LIMIT").is_ok() {
+            app.chat_widget.add_info_message(
+                "⚠  DEV MODE: Weekly rate-limit enforcement is DISABLED \
+                 (CODEX_BYPASS_RATE_LIMIT is set). \
+                 Do NOT use this in production."
+                    .to_string(),
+                None,
+            );
+        }
+        // In debug builds the limit is also skipped automatically; show a
+        // lighter notice so developers are aware.
+        #[cfg(debug_assertions)]
+        {
+            if std::env::var("CODEX_BYPASS_RATE_LIMIT").is_err() {
+                app.chat_widget.add_info_message(
+                    "ℹ  Debug build: weekly rate-limit gate is inactive (use --release to enable)."
+                        .to_string(),
+                    None,
+                );
+            }
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
         let tui_events = tui.event_stream();
         tokio::pin!(tui_events);
 

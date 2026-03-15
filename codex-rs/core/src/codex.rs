@@ -158,7 +158,6 @@ use crate::client::ModelClientSession;
 use crate::hybrid_router::HybridRouter;
 use crate::hybrid_router::HybridRouterConfig;
 use crate::hybrid_router::RoutingDecision;
-use crate::model_provider_info::built_in_model_providers;
 use crate::client_common::Prompt;
 use crate::client_common::ResponseEvent;
 use crate::codex_thread::ThreadConfigSnapshot;
@@ -1799,13 +1798,15 @@ impl Session {
             supervisor_client: Mutex::new(if config.hybrid_mode {
                 // Build a supervisor ModelClient pointing at the OpenAI provider.
                 let supervisor_provider = {
-                    let all_providers = built_in_model_providers();
+                    // config.model_providers already contains all built-in
+                    // providers (including openai) resolved with the correct
+                    // base URL, so we don't need to call built_in_model_providers
+                    // again here.
                     config
                         .model_providers
                         .get(&config.hybrid_supervisor_provider_id)
                         .cloned()
-                        .or_else(|| all_providers.get(&config.hybrid_supervisor_provider_id).cloned())
-                        .unwrap_or_else(ModelProviderInfo::create_openai_provider)
+                        .unwrap_or_else(|| ModelProviderInfo::create_openai_provider(None))
                 };
                 Some(ModelClient::new(
                     Some(Arc::clone(&auth_manager)),
@@ -2066,6 +2067,19 @@ impl Session {
     ) -> Option<i64> {
         let state = self.state.lock().await;
         state.history.estimate_token_count(turn_context)
+    }
+
+    /// Returns `true` when the cached rate-limit snapshot indicates that the
+    /// weekly quota has been fully consumed (`secondary.used_percent >= 100`).
+    pub(crate) async fn is_weekly_limit_exhausted(&self) -> bool {
+        let state = self.state.lock().await;
+        state.is_weekly_limit_exhausted()
+    }
+
+    /// Returns the Unix timestamp at which the weekly limit resets, if known.
+    pub(crate) async fn weekly_limit_resets_at(&self) -> Option<i64> {
+        let state = self.state.lock().await;
+        state.weekly_limit_resets_at()
     }
 
     pub(crate) async fn get_base_instructions(&self) -> BaseInstructions {
@@ -4596,6 +4610,38 @@ mod handlers {
             _ => unreachable!(),
         };
 
+        // ── Weekly-limit gate ─────────────────────────────────────────────────
+        // If the session has already observed a rate-limit snapshot that shows
+        // the secondary (weekly) window at 100 % consumed, refuse to start a
+        // new turn immediately rather than letting it fail mid-flight.  This
+        // closes the bug where an in-progress session could keep running after
+        // the weekly quota reached 0 %.
+        if sess.is_weekly_limit_exhausted().await {
+            let resets_at = sess.weekly_limit_resets_at().await;
+            let resets_msg = resets_at
+                .and_then(|ts| {
+                    chrono::DateTime::from_timestamp(ts, 0)
+                        .map(|dt: chrono::DateTime<chrono::Utc>| {
+                            let local = dt.with_timezone(&chrono::Local);
+                            format!(" Resets at {}.", local.format("%H:%M on %d %b"))
+                        })
+                })
+                .unwrap_or_default();
+            sess.send_event_raw(Event {
+                id: sub_id,
+                msg: EventMsg::Error(ErrorEvent {
+                    message: format!(
+                        "Weekly usage limit reached — no new turns can be started.{resets_msg} \
+                         Visit https://chatgpt.com/codex/settings/usage for details."
+                    ),
+                    codex_error_info: Some(CodexErrorInfo::UsageLimitExceeded),
+                }),
+            })
+            .await;
+            return;
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
         let Ok(current_context) = sess.new_turn_with_sub_id(sub_id, updates).await else {
             // new_turn_with_sub_id already emits the error event.
             return;
@@ -5537,6 +5583,38 @@ pub(crate) async fn run_turn(
         return None;
     }
 
+    // ── Second-layer weekly-limit guard ──────────────────────────────────────
+    // The first guard fires in `user_input_or_turn` before the turn context is
+    // created.  This second guard catches the edge case where the limit was
+    // reached *during* a previous turn (i.e. the snapshot arrived mid-stream)
+    // and a follow-up turn is spawned internally (e.g. tool-call continuation)
+    // before the user sends another message.
+    if sess.is_weekly_limit_exhausted().await {
+        let resets_at = sess.weekly_limit_resets_at().await;
+        let resets_msg = resets_at
+            .and_then(|ts| {
+                    chrono::DateTime::from_timestamp(ts, 0)
+                    .map(|dt: chrono::DateTime<chrono::Utc>| {
+                        let local = dt.with_timezone(&chrono::Local);
+                        format!(" Resets at {}.", local.format("%H:%M on %d %b"))
+                    })
+            })
+            .unwrap_or_default();
+        sess.send_event(
+            &turn_context,
+            EventMsg::Error(ErrorEvent {
+                message: format!(
+                    "Weekly usage limit reached — stopping turn.{resets_msg} \
+                     Visit https://chatgpt.com/codex/settings/usage for details."
+                ),
+                codex_error_info: Some(CodexErrorInfo::UsageLimitExceeded),
+            }),
+        )
+        .await;
+        return None;
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     let model_info = turn_context.model_info.clone();
     let auto_compact_limit = model_info.auto_compact_token_limit().unwrap_or(i64::MAX);
 
@@ -5769,22 +5847,37 @@ pub(crate) async fn run_turn(
         };
         match routing_decision_opt {
             Some(RoutingDecision::Supervisor { ref reason }) => {
-                // Notify the user that we are escalating this turn.
-                sess.send_event(
-                    &turn_context,
-                    EventMsg::Warning(WarningEvent {
-                        message: format!("⚡ Hybrid Mode: {reason}"),
-                    }),
-                )
-                .await;
-                // Use the supervisor client if available, otherwise fall back
-                // to the regular local client.
-                let supervisor_guard = sess.services.supervisor_client.lock().await;
-                if let Some(ref supervisor) = *supervisor_guard {
-                    supervisor.new_session()
-                } else {
+                // If the weekly OpenAI quota is already exhausted, skip the
+                // supervisor and fall back to the local model rather than
+                // firing a request that will immediately return a 429.
+                if sess.is_weekly_limit_exhausted().await {
+                    sess.send_event(
+                        &turn_context,
+                        EventMsg::Warning(WarningEvent {
+                            message: "⚡ Hybrid Mode: Weekly limit exhausted — falling back to local model instead of OpenAI supervisor.".to_string(),
+                        }),
+                    )
+                    .await;
                     prewarmed_client_session
                         .unwrap_or_else(|| sess.services.model_client.new_session())
+                } else {
+                    // Notify the user that we are escalating this turn.
+                    sess.send_event(
+                        &turn_context,
+                        EventMsg::Warning(WarningEvent {
+                            message: format!("⚡ Hybrid Mode: {reason}"),
+                        }),
+                    )
+                    .await;
+                    // Use the supervisor client if available, otherwise fall back
+                    // to the regular local client.
+                    let supervisor_guard = sess.services.supervisor_client.lock().await;
+                    if let Some(ref supervisor) = *supervisor_guard {
+                        supervisor.new_session()
+                    } else {
+                        prewarmed_client_session
+                            .unwrap_or_else(|| sess.services.model_client.new_session())
+                    }
                 }
             }
             Some(RoutingDecision::Local) | None => {

@@ -543,6 +543,10 @@ impl Op {
             Self::Shutdown => "shutdown",
             Self::RunUserShellCommand { .. } => "run_user_shell_command",
             Self::ListModels => "list_models",
+            Self::UpdateHybridMode { .. } => "update_hybrid_mode",
+            Self::UpdateHybridSupervisor { .. } => "update_hybrid_supervisor",
+            Self::UpdateHybridProvider { .. } => "update_hybrid_provider",
+            Self::UpdateHybridThreshold { .. } => "update_hybrid_threshold",
         }
     }
 }

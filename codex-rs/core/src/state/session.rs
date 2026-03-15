@@ -127,6 +127,57 @@ impl SessionState {
         (self.token_info(), self.latest_rate_limits.clone())
     }
 
+    /// Returns `true` when the session has observed a rate-limit snapshot whose
+    /// **secondary** (weekly) window is fully exhausted (`used_percent >= 100`).
+    ///
+    /// This is used to gate new turns *before* sending a request to the API so
+    /// that an in-progress session cannot keep running after the weekly quota
+    /// hits 0 % — the bug where a session continued past the weekly limit.
+    ///
+    /// # Developer bypass
+    ///
+    /// Two escape hatches are available for local development and testing:
+    ///
+    /// 1. **Runtime env var** — set `CODEX_BYPASS_RATE_LIMIT=1` (or any non-empty
+    ///    value) in the environment.  Works in both debug and release builds so
+    ///    that CI / integration test environments can opt out without recompiling.
+    ///
+    /// 2. **Debug build** — in `cfg(debug_assertions)` builds (i.e. `cargo build`
+    ///    without `--release`) the check is also skipped automatically, matching
+    ///    the convention used elsewhere in this codebase (see the retry-noise
+    ///    suppression in `run_sampling_request`).
+    ///
+    /// Neither bypass is available in production release builds unless the env
+    /// var is explicitly set, so end-users are always protected.
+    pub(crate) fn is_weekly_limit_exhausted(&self) -> bool {
+        // Developer escape hatch 1: explicit env var (works in any build profile).
+        if std::env::var("CODEX_BYPASS_RATE_LIMIT").is_ok() {
+            return false;
+        }
+        // Developer escape hatch 2: debug builds skip the gate automatically.
+        #[cfg(debug_assertions)]
+        {
+            return false;
+        }
+        #[cfg(not(debug_assertions))]
+        {
+            self.latest_rate_limits
+                .as_ref()
+                .and_then(|s| s.secondary.as_ref())
+                .map(|w| w.used_percent >= 100.0)
+                .unwrap_or(false)
+        }
+    }
+
+    /// Returns the Unix timestamp (seconds) at which the weekly limit resets,
+    /// if that information is available in the cached snapshot.
+    pub(crate) fn weekly_limit_resets_at(&self) -> Option<i64> {
+        self.latest_rate_limits
+            .as_ref()
+            .and_then(|s| s.secondary.as_ref())
+            .and_then(|w| w.resets_at)
+    }
+
     pub(crate) fn set_token_usage_full(&mut self, context_window: i64) {
         self.history.set_token_usage_full(context_window);
     }
