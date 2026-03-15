@@ -4283,6 +4283,10 @@ fn test_precedence_fixture_with_o3_profile() -> std::io::Result<()> {
             tui_status_line: None,
             tui_theme: None,
             otel: OtelConfig::default(),
+            hybrid_mode: false,
+            hybrid_supervisor_model: "gpt-5.3-codex".to_string(),
+            hybrid_supervisor_provider_id: "openai".to_string(),
+            hybrid_escalation_threshold: 0.65,
         },
         o3_profile_config
     );
@@ -4422,6 +4426,10 @@ fn test_precedence_fixture_with_gpt3_profile() -> std::io::Result<()> {
         tui_status_line: None,
         tui_theme: None,
         otel: OtelConfig::default(),
+        hybrid_mode: false,
+        hybrid_supervisor_model: "gpt-5.3-codex".to_string(),
+        hybrid_supervisor_provider_id: "openai".to_string(),
+        hybrid_escalation_threshold: 0.65,
     };
 
     assert_eq!(expected_gpt3_profile_config, gpt3_profile_config);
@@ -4559,6 +4567,10 @@ fn test_precedence_fixture_with_zdr_profile() -> std::io::Result<()> {
         tui_status_line: None,
         tui_theme: None,
         otel: OtelConfig::default(),
+        hybrid_mode: false,
+        hybrid_supervisor_model: "gpt-5.3-codex".to_string(),
+        hybrid_supervisor_provider_id: "openai".to_string(),
+        hybrid_escalation_threshold: 0.65,
     };
 
     assert_eq!(expected_zdr_profile_config, zdr_profile_config);
@@ -4682,6 +4694,10 @@ fn test_precedence_fixture_with_gpt5_profile() -> std::io::Result<()> {
         tui_status_line: None,
         tui_theme: None,
         otel: OtelConfig::default(),
+        hybrid_mode: false,
+        hybrid_supervisor_model: "gpt-5.3-codex".to_string(),
+        hybrid_supervisor_provider_id: "openai".to_string(),
+        hybrid_escalation_threshold: 0.65,
     };
 
     assert_eq!(expected_gpt5_profile_config, gpt5_profile_config);

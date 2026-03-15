@@ -153,3 +153,103 @@ async fn set_rate_limits_carries_credits_and_plan_type_from_codex_to_codex_other
         })
     );
 }
+
+// ─── Weekly limit bypass tests ────────────────────────────────────────────────
+
+/// Helper: build a SessionState whose secondary (weekly) window is at 100 %.
+async fn make_exhausted_state() -> SessionState {
+    let session_configuration = make_session_configuration_for_tests().await;
+    let mut state = SessionState::new(session_configuration);
+    state.set_rate_limits(RateLimitSnapshot {
+        limit_id: Some("codex".to_string()),
+        limit_name: None,
+        primary: Some(RateLimitWindow {
+            used_percent: 50.0,
+            window_minutes: Some(300),
+            resets_at: None,
+        }),
+        secondary: Some(RateLimitWindow {
+            used_percent: 100.0,
+            window_minutes: Some(10_080), // 1 week in minutes
+            resets_at: Some(9_999_999),
+        }),
+        credits: None,
+        plan_type: None,
+    });
+    state
+}
+
+#[tokio::test]
+// Verifies that is_weekly_limit_exhausted returns true when secondary
+// used_percent == 100 in a release-equivalent code path (env var absent).
+async fn weekly_limit_exhausted_returns_true_when_at_100_percent() {
+    // Make sure the env var is NOT set for this test.
+    // SAFETY: test-only env var mutation
+
+    unsafe { std::env::remove_var("CODEX_BYPASS_RATE_LIMIT"); }
+    let state = make_exhausted_state().await;
+
+    // In debug builds the gate is always open, so we can only assert the
+    // env-var path here.  The cfg(not(debug_assertions)) branch is tested
+    // by the release-build CI job.
+    #[cfg(not(debug_assertions))]
+    assert!(
+        state.is_weekly_limit_exhausted(),
+        "Expected is_weekly_limit_exhausted() == true when secondary.used_percent == 100"
+    );
+
+    // In debug builds the gate is always open — confirm it returns false.
+    #[cfg(debug_assertions)]
+    assert!(
+        !state.is_weekly_limit_exhausted(),
+        "Expected is_weekly_limit_exhausted() == false in debug builds (gate always open)"
+    );
+}
+
+#[tokio::test]
+// Verifies that setting CODEX_BYPASS_RATE_LIMIT bypasses the gate even when
+// the weekly limit is fully exhausted.
+async fn weekly_limit_bypass_env_var_skips_gate() {
+    // SAFETY: test-only env var mutation
+
+    unsafe { std::env::set_var("CODEX_BYPASS_RATE_LIMIT", "1"); }
+    let state = make_exhausted_state().await;
+
+    assert!(
+        !state.is_weekly_limit_exhausted(),
+        "Expected is_weekly_limit_exhausted() == false when CODEX_BYPASS_RATE_LIMIT is set"
+    );
+
+    // Clean up so other tests are not affected.
+    // SAFETY: test-only env var mutation
+
+    unsafe { std::env::remove_var("CODEX_BYPASS_RATE_LIMIT"); }
+}
+
+#[tokio::test]
+// Verifies that a session with < 100 % weekly usage is never considered
+// exhausted, regardless of the env var.
+async fn weekly_limit_not_exhausted_when_below_100_percent() {
+    // SAFETY: test-only env var mutation
+
+    unsafe { std::env::remove_var("CODEX_BYPASS_RATE_LIMIT"); }
+    let session_configuration = make_session_configuration_for_tests().await;
+    let mut state = SessionState::new(session_configuration);
+    state.set_rate_limits(RateLimitSnapshot {
+        limit_id: Some("codex".to_string()),
+        limit_name: None,
+        primary: None,
+        secondary: Some(RateLimitWindow {
+            used_percent: 99.9,
+            window_minutes: Some(10_080),
+            resets_at: None,
+        }),
+        credits: None,
+        plan_type: None,
+    });
+
+    assert!(
+        !state.is_weekly_limit_exhausted(),
+        "Expected is_weekly_limit_exhausted() == false when secondary.used_percent < 100"
+    );
+}
